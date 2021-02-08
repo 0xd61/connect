@@ -305,6 +305,7 @@ DGL_DEF void dgl_mem_arena_init(DGL_Mem_Arena *arena, uint8 *base, DGL_Mem_Index
 DGL_DEF void * dgl_mem_arena_alloc_align(DGL_Mem_Arena *arena, DGL_Mem_Index size, DGL_Mem_Index align);
 #define dgl_mem_arena_resize(arena, current_base, current_size, new_size) dgl_mem_arena_resize_align(arena, current_base, current_size, new_size, DEFAULT_ALIGNMENT)
 DGL_DEF void * dgl_mem_arena_resize_align(DGL_Mem_Arena *arena, uint8 *current_base, DGL_Mem_Index current_size, DGL_Mem_Index new_size, usize align);
+DGL_DEF void dgl_mem_arena_free_all(DGL_Mem_Arena *arena);
 DGL_DEF DGL_Mem_Temp_Arena dgl_mem_arena_begin_temp(DGL_Mem_Arena *arena);
 DGL_DEF void dgl_mem_arena_end_temp(DGL_Mem_Temp_Arena temp);
 
@@ -481,7 +482,7 @@ dgl_mem_arena_alloc_align(DGL_Mem_Arena *arena, DGL_Mem_Index size, usize align)
     arena->prev_offset = offset;
     arena->curr_offset = offset + size;
 
-    // Zero new memory by default
+    // Zero new memory by default (we do not zero the memory on init or free_all)
     memset(result, 0, size);
 
     return(result);
@@ -519,6 +520,13 @@ dgl_mem_arena_resize_align(DGL_Mem_Arena *arena, uint8 *current_base, DGL_Mem_In
     }
 
     return(result);
+}
+
+DGL_DEF void
+dgl_mem_arena_free_all(DGL_Mem_Arena *arena)
+{
+    arena->curr_offset = 0;
+    arena->prev_offset = 0;
 }
 
 DGL_DEF DGL_Mem_Temp_Arena

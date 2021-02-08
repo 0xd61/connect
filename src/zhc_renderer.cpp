@@ -9,7 +9,6 @@ struct Zhc_Offscreen_Buffer
     void *memory;
 };
 
-
 struct Zhc_Renderer
 {
     SDL_Window *window;

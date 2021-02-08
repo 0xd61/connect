@@ -87,11 +87,14 @@ int main()
 
             if(rerender)
             {
-                // TODO(dgl): update app and create command_list
-                //zhc_update(&memory, &input);
+                zhc_update(&memory);
 
-                // TODO(dgl): render based on command_list
-                //zhc_render_rect(&renderer);
+                Zhc_Command *cmd = 0;
+                while(zhc_next_command(&memory, &cmd))
+                {
+                    // TODO(dgl): render based on command_list
+                    //zhc_render_rect(&renderer);
+                }
             }
 
             uint64 work_counter = SDL_GetPerformanceCounter();
