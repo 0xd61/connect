@@ -3,7 +3,7 @@
 # Stop at errors
 set -e
 
-CommonCompilerFlags="-O3 -g -ggdb -fdiagnostics-color=always -std=c++11 -fno-rtti -fno-exceptions -ffast-math -msse4.1
+CommonCompilerFlags="-O0 -g -ggdb -fdiagnostics-color=always -std=c++11 -fno-rtti -fno-exceptions -ffast-math -msse4.1
 -Wall -Werror -Wconversion
 -Wno-writable-strings -Wno-gnu-anonymous-struct
 -Wno-padded -Wno-string-conversion
@@ -40,7 +40,7 @@ if [ "$OS_NAME" == "GNU/Linux" ] || \
    [ "$OS_NAME" == "linux" ]; then
     # PIC = Position Independent Code
     # -lm -> we have to link the math library...
-    clang $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux_main_x64 $srcDir/linux_main.cpp \
+    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o main_x64 $srcDir/main.cpp \
     `sdl2-config --static-libs`
 elif [ "$OS_NAME" == "Android" ] || \
      [ "$OS_NAME" == "android" ]; then
