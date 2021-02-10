@@ -11,11 +11,11 @@ struct Zhc_Renderer
 {
     SDL_Window *window;
     Zhc_Offscreen_Buffer draw_buffer;
-    Rect clip;
+    V4 clip;
 };
 
 internal void
-set_clip(Zhc_Renderer *renderer, Rect rect)
+set_clip(Zhc_Renderer *renderer, V4 rect)
 {
     renderer->clip.left = rect.x;
     renderer->clip.top = rect.y;

@@ -265,6 +265,12 @@ void dgl__log_internal(char *file, int32 line, char *fmt, ...);
 #define DEFAULT_ALIGNMENT (2*sizeof(void *))
 #endif
 
+#ifndef dgl_memcpy
+#include <string.h> /* memset, memcpy */
+#define dgl_memcpy memcpy
+#define dgl_memset memset
+#endif
+
 typedef usize DGL_Mem_Index;
 
 typedef struct DGL_Mem_Arena

@@ -1,3 +1,14 @@
+#define DGL_STATIC
+#define DGL_DEBUG ZHC_DEBUG
+#include "dgl.h"
+#define assert(cond, msg) dgl_assert(cond, msg)
+#define cast(type) dgl_cast(type)
+#define LOG(...) DGL_LOG(__VA_ARGS__)
+#define LOG_DEBUG(...) DGL_LOG_DEBUG(__VA_ARGS__)
+
+#include "zhc_types.h"
+#include "zhc_input.cpp"
+
 enum Zhc_Command_Type
 {
     Command_Type_Rect,
@@ -30,7 +41,7 @@ struct Lib_State
 };
 
 void
-zhc_update(Zhc_Memory *memory)
+zhc_update(Zhc_Memory *memory, Zhc_Input *input)
 {
     assert(sizeof(Lib_State) < memory->storage_size, "Not enough memory allocated");
 
@@ -46,6 +57,9 @@ zhc_update(Zhc_Memory *memory)
 
     // NOTE(dgl): clear transient arena for new frame.
     dgl_mem_arena_free_all(&state->transient_arena);
+
+    LOG_DEBUG("Current Text: %s", input->text);
+
 
 
 }

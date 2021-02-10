@@ -1,13 +1,3 @@
-#define DGL_STATIC
-#define DGL_DEBUG ZHC_DEBUG
-#define DGL_IMPLEMENTATION
-#include "dgl.h"
-#define assert(cond, msg) dgl_assert(cond, msg)
-#define cast(type) dgl_cast(type)
-#define LOG(...) DGL_LOG(__VA_ARGS__)
-#define LOG_DEBUG(...) DGL_LOG_DEBUG(__VA_ARGS__)
-
-#include "zhc_types.h"
 #include "zhc_lib.cpp"
 
 #ifdef __ANDROID__
@@ -15,7 +5,11 @@
 #else
 #include <SDL2/SDL.h>
 #endif
+
 #include "zhc_renderer.cpp"
+
+#define DGL_IMPLEMENTATION
+#include "dgl.h"
 
 #include <sys/mman.h> /* mmap */
 #include <string.h> /* memset, memcpy */
@@ -32,15 +26,6 @@ get_time_in_ms()
     return(result);
 }
 
-internal int32
-string_length(char *s)
-{
-    int32 result = 0;
-    while(*s++) { ++result; }
-
-    return(result);
-}
-
 int main(int argc, char *argv[])
 {
     dgl_log_init(get_time_in_ms);
@@ -52,7 +37,7 @@ int main(int argc, char *argv[])
     SDL_DisableScreenSaver();
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
-    uint64 target_frame_rate = 24;
+    uint64 target_frame_rate = 10;
     uint64 target_frame_ticks = (target_frame_rate * SDL_GetPerformanceFrequency()) / 1000;
     real32 target_ms_per_frame = (1.0f / cast(real32)target_frame_rate) * 1000.0f;
 
@@ -87,8 +72,12 @@ int main(int argc, char *argv[])
         uint64 last_counter = SDL_GetPerformanceCounter();
 
         global_running = true;
+
+        Zhc_Input input = {};
+
         while(global_running)
         {
+            zhc_reset(&input);
             SDL_Event event;
             bool32 rerender = false;
             while(SDL_PollEvent(&event))
@@ -97,12 +86,80 @@ int main(int argc, char *argv[])
                 switch(event.type)
                 {
                     case SDL_QUIT: { global_running = false; } break;
+                    case SDL_TEXTINPUT: { zhc_text(&input, event.text.text); } break;
+                    case SDL_MOUSEBUTTONDOWN:
+                    case SDL_MOUSEBUTTONUP:
+                    {
+                        bool32 down = (event.type == SDL_MOUSEBUTTONDOWN);
+
+                        if(event.button.button == SDL_BUTTON_LEFT)
+                        {
+                            zhc_mousebutton(&input, Zhc_Mouse_Button_Left, down);
+                        }
+                        else if(event.button.button == SDL_BUTTON_RIGHT)
+                        {
+                            zhc_mousebutton(&input, Zhc_Mouse_Button_Right, down);
+                        }
+                        else if(event.button.button == SDL_BUTTON_MIDDLE)
+                        {
+                            zhc_mousebutton(&input, Zhc_Mouse_Button_Middle, down);
+                        }
+                    } break;
+                    case SDL_MOUSEWHEEL:
+                    {
+                        zhc_mousemove(&input, v2(event.wheel.x, event.wheel.y));
+                    } break;
+                    case SDL_MOUSEMOTION:
+                    {
+                        zhc_mousemove(&input, v2(event.motion.x, event.motion.y));
+                    } break;
+                    case SDL_FINGERMOTION:
+                    case SDL_FINGERDOWN:
+                    case SDL_FINGERUP:
+
+                    case SDL_KEYDOWN:
+                    case SDL_KEYUP:
+                    {
+                        bool32 down = (event.type == SDL_KEYDOWN);
+
+                        if((event.key.keysym.sym == SDLK_LSHIFT) ||
+                           (event.key.keysym.sym == SDLK_RSHIFT))
+                        {
+                            zhc_keybutton(&input, Zhc_Keyboard_Button_Shift, down);
+                        }
+                        else if((event.key.keysym.sym == SDLK_LCTRL) ||
+                                (event.key.keysym.sym == SDLK_RCTRL))
+                        {
+                            zhc_keybutton(&input, Zhc_Keyboard_Button_Ctrl, down);
+                        }
+                        else if((event.key.keysym.sym == SDLK_LALT) ||
+                                (event.key.keysym.sym == SDLK_RALT))
+                        {
+                            zhc_keybutton(&input, Zhc_Keyboard_Button_Alt, down);
+                        }
+                        else if(event.key.keysym.sym == SDLK_DELETE)
+                        {
+                            zhc_keybutton(&input, Zhc_Keyboard_Button_Del, down);
+                        }
+                        else if(event.key.keysym.sym == SDLK_BACKSPACE)
+                        {
+                            zhc_keybutton(&input, Zhc_Keyboard_Button_Backspace, down);
+                        }
+                        else if((event.key.keysym.sym == SDLK_RETURN) ||
+                                (event.key.keysym.sym == SDLK_KP_ENTER))
+                        {
+                            zhc_keybutton(&input, Zhc_Keyboard_Button_Enter, down);
+                        }
+                    } break;
+                    default: {}
                 }
             }
 
             if(rerender)
             {
-                zhc_update(&memory);
+                zhc_update(&memory, &input);
+
+                //flush_input(&input);
 
                 Zhc_Command *cmd = 0;
                 while(zhc_next_command(&memory, &cmd))
@@ -133,7 +190,8 @@ int main(int argc, char *argv[])
 
             uint64 end_counter = SDL_GetPerformanceCounter();
 
-#if 1
+#if 0
+            uint64 counter_elapsed = end_counter - last_counter;
             real32 ms_per_frame = (((1000.0f * (real32)counter_elapsed) / (real32)perf_count_frequency));
             real32 fps = (real32)perf_count_frequency / (real32)counter_elapsed;
 
