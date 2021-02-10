@@ -47,11 +47,11 @@ zhc_render_init(Zhc_Renderer *renderer, SDL_Window *window)
 void
 zhc_render_rect(Zhc_Renderer *renderer)
 {
-
+    LOG_DEBUG("Render Rectangle");
 }
 
 void
 zhc_render_text(Zhc_Renderer *renderer)
 {
-
+    LOG_DEBUG("Render Text");
 }

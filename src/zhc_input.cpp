@@ -19,6 +19,8 @@ enum Zhc_Keyboard_Button
 
 struct Zhc_Input
 {
+    V2 window;
+
     V2 pos;
     V2 last_pos;
 
@@ -57,6 +59,12 @@ zhc_mousescroll(Zhc_Input *input, V2 delta)
 {
     input->scroll_delta.x += delta.x;
     input->scroll_delta.y += delta.y;
+}
+
+void
+zhc_window_resize(Zhc_Input *input, V2 dim)
+{
+    input->window = dim;
 }
 
 internal int32

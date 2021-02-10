@@ -75,6 +75,10 @@ int main(int argc, char *argv[])
 
         Zhc_Input input = {};
 
+        V2 win_size = {};
+        SDL_GetWindowSize(window, &win_size.w, &win_size.h);
+        zhc_window_resize(&input, win_size);
+
         while(global_running)
         {
             zhc_reset(&input);
@@ -86,6 +90,13 @@ int main(int argc, char *argv[])
                 switch(event.type)
                 {
                     case SDL_QUIT: { global_running = false; } break;
+                    case SDL_WINDOWEVENT:
+                    {
+                        if(event.window.event == SDL_WINDOWEVENT_RESIZED)
+                        {
+                            zhc_window_resize(&input, v2(event.window.data1, event.window.data2));
+                        }
+                    } break;
                     case SDL_TEXTINPUT: { zhc_text(&input, event.text.text); } break;
                     case SDL_MOUSEBUTTONDOWN:
                     case SDL_MOUSEBUTTONUP:
@@ -164,8 +175,21 @@ int main(int argc, char *argv[])
                 Zhc_Command *cmd = 0;
                 while(zhc_next_command(&memory, &cmd))
                 {
-                    // TODO(dgl): render based on command_list
-                    //zhc_render_rect(&renderer);
+                    switch(cmd->type)
+                    {
+                        case Command_Type_Rect:
+                        {
+                            zhc_render_rect(&renderer);
+                        } break;
+                        case Command_Type_Text:
+                        {
+                            zhc_render_text(&renderer);
+                        } break;
+                        default:
+                        {
+                            LOG("Command type not supported");
+                        }
+                    }
                 }
             }
 
