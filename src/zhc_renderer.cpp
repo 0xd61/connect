@@ -1,5 +1,3 @@
-#include <SDL2/SDL.h>
-
 struct Zhc_Offscreen_Buffer
 {
     int32 width;

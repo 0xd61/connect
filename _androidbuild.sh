@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SOURCES=( "android_main.cpp" )
+SOURCES=( "main.cpp" )
 _SOURCES=()
 MKSOURCES=""
 SCRIPT=$(readlink -f "$0")
@@ -42,7 +42,8 @@ done
 SDLVERSION="SDL2-2.0.14"
 SDLPATH="$CURDIR/$SDLVERSION"
 
-[ -d $SDLPATH ] || curl https://www.libsdl.org/release/$SDLVERSION.tar.gz | tar xzf - && mv $SDLVERSION $SDLPATH
+[ -d $SDLPATH ] || curl https://www.libsdl.org/release/$SDLVERSION.tar.gz | tar xzf -
+[ -d $SDLVERSION ] && mv $SDLVERSION $SDLPATH
 
 if [ -z "$ANDROID_HOME" ];then
     echo "Please set the ANDROID_HOME directory to the path of the Android SDK"

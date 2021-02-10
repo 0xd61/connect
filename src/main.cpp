@@ -9,14 +9,20 @@
 
 #include "zhc_types.h"
 #include "zhc_lib.cpp"
+
+#ifdef __ANDROID__
+#include <SDL.h>
+#else
+#include <SDL2/SDL.h>
+#endif
 #include "zhc_renderer.cpp"
 
-#include <SDL2/SDL.h>
 #include <sys/mman.h> /* mmap */
+#include <string.h> /* memset, memcpy */
 
 global bool32 global_running;
 
-int64
+internal int64
 get_time_in_ms()
 {
     int64 result = 0;
@@ -26,7 +32,16 @@ get_time_in_ms()
     return(result);
 }
 
-int main()
+internal int32
+string_length(char *s)
+{
+    int32 result = 0;
+    while(*s++) { ++result; }
+
+    return(result);
+}
+
+int main(int argc, char *argv[])
 {
     dgl_log_init(get_time_in_ms);
 
@@ -117,7 +132,6 @@ int main()
 
 
             uint64 end_counter = SDL_GetPerformanceCounter();
-            uint64 counter_elapsed = end_counter - last_counter;
 
 #if 1
             real32 ms_per_frame = (((1000.0f * (real32)counter_elapsed) / (real32)perf_count_frequency));

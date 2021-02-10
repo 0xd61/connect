@@ -1,4 +1,3 @@
-
 enum Zhc_Command_Type
 {
     Command_Type_Rect,

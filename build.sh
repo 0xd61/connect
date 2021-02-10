@@ -45,7 +45,7 @@ if [ "$OS_NAME" == "GNU/Linux" ] || \
 elif [ "$OS_NAME" == "Android" ] || \
      [ "$OS_NAME" == "android" ]; then
     # TODO(dgl): Android build not yet tested!
-    $curDir/androidbuild.sh "co.degit.connect"
+    $curDir/_androidbuild.sh "co.degit.connect"
 else
     echo "$OS_NAME is currently not supported"
 fi
