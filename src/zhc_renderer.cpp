@@ -370,8 +370,8 @@ draw_text(Zhc_Offscreen_Buffer *buffer, Font *font, char *text, V4 box, V4 color
     }
 
 #if 1
-    draw_rectangle(buffer, rect(box.x, box.y, 1, box.h), color(1.0f, 0.0f, 0.0f, 1.0f));
-    draw_rectangle(buffer, rect(box.x, box.y, box.w, 1), color(1.0f, 0.0f, 0.0f, 1.0f));
+    draw_rectangle(buffer, rect(box.x - 1, box.y, 1, box.h), color(1.0f, 0.0f, 0.0f, 1.0f));
+    draw_rectangle(buffer, rect(box.x, box.y - 1, box.w, 1), color(1.0f, 0.0f, 0.0f, 1.0f));
     draw_rectangle(buffer, rect(box.x + box.w, box.y, 1, box.h), color(1.0f, 0.0f, 0.0f, 1.0f));
     draw_rectangle(buffer, rect(box.x, box.y + box.h, box.w, 1), color(1.0f, 0.0f, 0.0f, 1.0f));
 #endif
