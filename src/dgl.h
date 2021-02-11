@@ -309,6 +309,7 @@ DGL_DEF void dgl_mem_arena_init(DGL_Mem_Arena *arena, uint8 *base, DGL_Mem_Index
 #define dgl_mem_arena_push_array(arena, type, count) (type *)dgl_mem_arena_alloc_align(arena, (count)*sizeof(type), DEFAULT_ALIGNMENT)
 #define dgl_mem_arena_push(arena, size) dgl_mem_arena_alloc_align(arena, size, DEFAULT_ALIGNMENT)
 DGL_DEF void * dgl_mem_arena_alloc_align(DGL_Mem_Arena *arena, DGL_Mem_Index size, DGL_Mem_Index align);
+#define dgl_mem_arena_resize_array(arena, type, current_base, current_size, new_size) (type *) dgl_mem_arena_resize_align(arena, dgl_cast(uint8 *)(current_base), (current_size)*sizeof(type), (new_size)*sizeof(type), DEFAULT_ALIGNMENT)
 #define dgl_mem_arena_resize(arena, current_base, current_size, new_size) dgl_mem_arena_resize_align(arena, current_base, current_size, new_size, DEFAULT_ALIGNMENT)
 DGL_DEF void * dgl_mem_arena_resize_align(DGL_Mem_Arena *arena, uint8 *current_base, DGL_Mem_Index current_size, DGL_Mem_Index new_size, usize align);
 DGL_DEF void dgl_mem_arena_free_all(DGL_Mem_Arena *arena);
@@ -489,7 +490,7 @@ dgl_mem_arena_alloc_align(DGL_Mem_Arena *arena, DGL_Mem_Index size, usize align)
     arena->curr_offset = offset + size;
 
     // Zero new memory by default (we do not zero the memory on init or free_all)
-    memset(result, 0, size);
+    dgl_memset(result, 0, size);
 
     return(result);
 }
@@ -510,7 +511,7 @@ dgl_mem_arena_resize_align(DGL_Mem_Arena *arena, uint8 *current_base, DGL_Mem_In
         if (new_size > current_size)
         {
             // Zero the newly allocated memory
-            memset(arena->base + arena->prev_offset + current_size, 0, new_size - current_size);
+            dgl_memset(arena->base + arena->prev_offset + current_size, 0, new_size - current_size);
         }
         result = current_base;
         DGL_LOG_DEBUG("Resize allocation at 0x%p from %d to %d (%d bytes)", current_base, current_size, new_size, new_size - current_size);
@@ -520,7 +521,7 @@ dgl_mem_arena_resize_align(DGL_Mem_Arena *arena, uint8 *current_base, DGL_Mem_In
         void *new_base = dgl_mem_arena_alloc_align(arena, new_size, align);
         // NOTE(dgl): copy the existing data to the new location
         usize copy_size = new_size < current_size ? new_size : current_size;
-        memcpy(new_base, current_base, copy_size);
+        dgl_memcpy(new_base, current_base, copy_size);
         result = new_base;
         DGL_LOG_DEBUG("New allocation for resizing 0x%p from %d to %d (%d bytes). New address is 0x%p", current_base, current_size, new_size, new_size - current_size, new_base);
     }
@@ -598,7 +599,7 @@ dgl__mem_pool_alloc_internal(DGL_Mem_Pool *arena)
     if(node) {
         result = node;
         arena->head->next = arena->head->next;
-        memset(result, 0, arena->chunk_size);
+        dgl_memset(result, 0, arena->chunk_size);
     }
     else
     {
@@ -636,7 +637,7 @@ dgl__mem_pool_alloc_threadsafe_internal(DGL_Mem_Pool *arena)
            old_head) == old_head)
         {
             result = node;
-            memset(result, 0, arena->chunk_size);
+            dgl_memset(result, 0, arena->chunk_size);
         }
         else
         {

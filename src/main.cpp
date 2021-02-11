@@ -1,12 +1,12 @@
+#include "zhc_platform.h"
 #include "zhc_lib.cpp"
+#include "zhc_renderer.cpp"
 
 #ifdef __ANDROID__
 #include <SDL.h>
 #else
 #include <SDL2/SDL.h>
 #endif
-
-#include "zhc_renderer.cpp"
 
 #define DGL_IMPLEMENTATION
 #include "dgl.h"
@@ -15,6 +15,34 @@
 #include <string.h> /* memset, memcpy */
 
 global bool32 global_running;
+
+ZHC_READ_ENTIRE_FILE(sdl_read_entire_file)
+{
+    bool32 result = false;
+
+    SDL_RWops *io = SDL_RWFromFile(filename, "rb");
+    if(io != 0)
+    {
+        usize read = SDL_RWread(io, buffer, 1, buffer_size);
+        LOG_DEBUG("Reading file %s (%d bytes) into buffer %p (%d bytes)", filename, read, buffer, buffer_size);
+        assert(read >= buffer_size, "Could not read entire file");
+        result = true;
+    }
+    SDL_RWclose(io);
+
+    return(result);
+}
+
+ZHC_FILE_SIZE(sdl_file_size)
+{
+    usize result = 0;
+    SDL_RWops *io = SDL_RWFromFile(filename, "rb");
+    int64 size = SDL_RWsize(io);
+    assert(size > 0, "Failed to find file");
+    result = cast(usize)size;
+    SDL_RWclose(io);
+    return(result);
+}
 
 internal int64
 get_time_in_ms()
@@ -62,26 +90,26 @@ int main(int argc, char *argv[])
     if(memory_block != cast(void *)-1)
     {
         Zhc_Memory memory = {};
-        memory.storage_size = memory_size;
-        memory.storage = memory_block;
+        memory.update_storage_size = memory_size / 2;
+        memory.render_storage_size = memory_size - memory.update_storage_size;
+        memory.update_storage = memory_block;
+        memory.render_storage = cast(uint8 *)memory_block + memory.update_storage_size;
+        memory.api.read_entire_file = sdl_read_entire_file;
+        memory.api.file_size = sdl_file_size;
 
-        Zhc_Renderer renderer = {};
-        zhc_render_init(&renderer, window);
+        Zhc_Offscreen_Buffer back_buffer = {};
+        Zhc_Input input = {};
+
+        // TODO(dgl): maybe it makes more sense to pass the buffer to each render call.
+        // I think this solution is confusing.
+        zhc_render_init(&memory, &back_buffer);
 
         uint64 perf_count_frequency = SDL_GetPerformanceFrequency();
         uint64 last_counter = SDL_GetPerformanceCounter();
-
         global_running = true;
-
-        Zhc_Input input = {};
-
-        V2 win_size = {};
-        SDL_GetWindowSize(window, &win_size.w, &win_size.h);
-        zhc_window_resize(&input, win_size);
-
         while(global_running)
         {
-            zhc_reset(&input);
+            zhc_input_reset(&input);
             SDL_Event event;
             bool32 rerender = false;
             while(SDL_PollEvent(&event))
@@ -97,7 +125,7 @@ int main(int argc, char *argv[])
                             zhc_window_resize(&input, v2(event.window.data1, event.window.data2));
                         }
                     } break;
-                    case SDL_TEXTINPUT: { zhc_text(&input, event.text.text); } break;
+                    case SDL_TEXTINPUT: { zhc_input_text(&input, event.text.text); } break;
                     case SDL_MOUSEBUTTONDOWN:
                     case SDL_MOUSEBUTTONUP:
                     {
@@ -105,24 +133,24 @@ int main(int argc, char *argv[])
 
                         if(event.button.button == SDL_BUTTON_LEFT)
                         {
-                            zhc_mousebutton(&input, Zhc_Mouse_Button_Left, down);
+                            zhc_input_mousebutton(&input, Zhc_Mouse_Button_Left, down);
                         }
                         else if(event.button.button == SDL_BUTTON_RIGHT)
                         {
-                            zhc_mousebutton(&input, Zhc_Mouse_Button_Right, down);
+                            zhc_input_mousebutton(&input, Zhc_Mouse_Button_Right, down);
                         }
                         else if(event.button.button == SDL_BUTTON_MIDDLE)
                         {
-                            zhc_mousebutton(&input, Zhc_Mouse_Button_Middle, down);
+                            zhc_input_mousebutton(&input, Zhc_Mouse_Button_Middle, down);
                         }
                     } break;
                     case SDL_MOUSEWHEEL:
                     {
-                        zhc_mousemove(&input, v2(event.wheel.x, event.wheel.y));
+                        zhc_input_scroll(&input, v2(event.wheel.x, event.wheel.y));
                     } break;
                     case SDL_MOUSEMOTION:
                     {
-                        zhc_mousemove(&input, v2(event.motion.x, event.motion.y));
+                        zhc_input_mousemove(&input, v2(event.motion.x, event.motion.y));
                     } break;
                     case SDL_FINGERMOTION:
                     case SDL_FINGERDOWN:
@@ -136,41 +164,46 @@ int main(int argc, char *argv[])
                         if((event.key.keysym.sym == SDLK_LSHIFT) ||
                            (event.key.keysym.sym == SDLK_RSHIFT))
                         {
-                            zhc_keybutton(&input, Zhc_Keyboard_Button_Shift, down);
+                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Shift, down);
                         }
                         else if((event.key.keysym.sym == SDLK_LCTRL) ||
                                 (event.key.keysym.sym == SDLK_RCTRL))
                         {
-                            zhc_keybutton(&input, Zhc_Keyboard_Button_Ctrl, down);
+                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Ctrl, down);
                         }
                         else if((event.key.keysym.sym == SDLK_LALT) ||
                                 (event.key.keysym.sym == SDLK_RALT))
                         {
-                            zhc_keybutton(&input, Zhc_Keyboard_Button_Alt, down);
+                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Alt, down);
                         }
                         else if(event.key.keysym.sym == SDLK_DELETE)
                         {
-                            zhc_keybutton(&input, Zhc_Keyboard_Button_Del, down);
+                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Del, down);
                         }
                         else if(event.key.keysym.sym == SDLK_BACKSPACE)
                         {
-                            zhc_keybutton(&input, Zhc_Keyboard_Button_Backspace, down);
+                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Backspace, down);
                         }
                         else if((event.key.keysym.sym == SDLK_RETURN) ||
                                 (event.key.keysym.sym == SDLK_KP_ENTER))
                         {
-                            zhc_keybutton(&input, Zhc_Keyboard_Button_Enter, down);
+                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Enter, down);
                         }
                     } break;
                     default: {}
                 }
             }
+            SDL_Surface *surf = SDL_GetWindowSurface(window);
+            back_buffer.width = surf->w;
+            back_buffer.height = surf->h;
+            back_buffer.pitch = surf->pitch;
+            back_buffer.bytes_per_pixel = surf->format->BytesPerPixel;
+            back_buffer.memory = surf->pixels;
+            zhc_window_resize(&input, v2(back_buffer.width, back_buffer.height));
 
             if(rerender)
             {
                 zhc_update(&memory, &input);
-
-                //flush_input(&input);
 
                 Zhc_Command *cmd = 0;
                 while(zhc_next_command(&memory, &cmd))
@@ -179,11 +212,11 @@ int main(int argc, char *argv[])
                     {
                         case Command_Type_Rect:
                         {
-                            zhc_render_rect(&renderer);
+                            zhc_render_rect(&memory);
                         } break;
                         case Command_Type_Text:
                         {
-                            zhc_render_text(&renderer);
+                            zhc_render_text(&memory);
                         } break;
                         default:
                         {

@@ -1,55 +1,10 @@
-#define DGL_STATIC
-#define DGL_DEBUG ZHC_DEBUG
-#include "dgl.h"
-#define assert(cond, msg) dgl_assert(cond, msg)
-#define cast(type) dgl_cast(type)
-#define LOG(...) DGL_LOG(__VA_ARGS__)
-#define LOG_DEBUG(...) DGL_LOG_DEBUG(__VA_ARGS__)
-
-#include "zhc_types.h"
-#include "zhc_input.cpp"
-
-enum Zhc_Command_Type
-{
-    Command_Type_Rect,
-    Command_Type_Text,
-};
-
-struct Zhc_Rect_Command
-{
-    V4 rect;
-    V4 color;
-};
-
-struct Zhc_Text_Command
-{
-    V4 rect;
-    V4 color;
-    uint8 text[1];
-};
-
-struct Zhc_Command
-{
-    Zhc_Command_Type type;
-    int32 size;
-    union
-    {
-        Zhc_Text_Command text_cmd;
-        Zhc_Rect_Command rect_cmd;
-    };
-};
+#include "zhc_platform.h"
 
 struct Command_List
 {
     usize offset;
     usize size;
     uint8 *memory;
-};
-
-struct Zhc_Memory
-{
-    usize storage_size;
-    void *storage; // NOTE(dgl): REQUIRED to be cleared to zero at startup
 };
 
 struct Lib_State
@@ -102,14 +57,14 @@ push_text(Command_List *list, V4 rect, V4 color, char *text)
 void
 zhc_update(Zhc_Memory *memory, Zhc_Input *input)
 {
-    assert(sizeof(Lib_State) < memory->storage_size, "Not enough memory allocated");
+    assert(sizeof(Lib_State) < memory->update_storage_size, "Not enough memory allocated");
 
-    Lib_State *state = cast(Lib_State *)memory->storage;
+    Lib_State *state = cast(Lib_State *)memory->update_storage;
     if(!state->is_initialized)
     {
-        LOG_DEBUG("Lib_State size: %lld, Available memory: %lld", sizeof(*state), memory->storage_size);
-        dgl_mem_arena_init(&state->permanent_arena, (uint8 *)memory->storage + sizeof(*state), ((DGL_Mem_Index)memory->storage_size - sizeof(*state))/2);
-        dgl_mem_arena_init(&state->transient_arena, state->permanent_arena.base + state->permanent_arena.size, (DGL_Mem_Index)memory->storage_size - state->permanent_arena.size);
+        LOG_DEBUG("Lib_State size: %lld, Available memory: %lld", sizeof(*state), memory->update_storage_size);
+        dgl_mem_arena_init(&state->permanent_arena, (uint8 *)memory->update_storage + sizeof(*state), ((DGL_Mem_Index)memory->update_storage_size - sizeof(*state))/2);
+        dgl_mem_arena_init(&state->transient_arena, state->permanent_arena.base + state->permanent_arena.size, (DGL_Mem_Index)memory->update_storage_size - state->permanent_arena.size);
 
         state->is_initialized = true;
     }
@@ -133,7 +88,7 @@ zhc_update(Zhc_Memory *memory, Zhc_Input *input)
 bool32
 zhc_next_command(Zhc_Memory *memory, Zhc_Command **cmd)
 {
-    Lib_State *state = cast(Lib_State *)memory->storage;
+    Lib_State *state = cast(Lib_State *)memory->update_storage;
     assert(state->is_initialized, "Initialize the lib state (by calling zhc_update) before calling zhc_next_command");
 
     // NOTE(dgl): If the current command does not exist, we return the first from the list.
