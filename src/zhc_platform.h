@@ -13,8 +13,8 @@ struct V2
 {
     union
     {
-        int32 x,y;
-        int32 w,h;
+        struct { int32 x,y; };
+        struct { int32 w,h; };
     };
 };
 
@@ -31,9 +31,9 @@ struct V4
 {
     union
     {
-        int32 x,y,w,h;
-        int32 left,top,right,bottom;
-        real32 r,g,b,a;
+        struct { int32 x,y,w,h; };
+        struct { int32 left,top,right,bottom; };
+        struct { real32 r,g,b,a; };
     };
 };
 
@@ -228,7 +228,7 @@ bool32 zhc_next_command(Zhc_Memory *memory, Zhc_Command **cmd);
 
 // NOTE(dgl): zhc_renderer.cpp
 void zhc_render_init(Zhc_Memory *memory, Zhc_Offscreen_Buffer *buffer);
-void zhc_render_rect(Zhc_Memory *memory);
+void zhc_render_rect(Zhc_Memory *memory, V4 rect, V4 color);
 void zhc_render_text(Zhc_Memory *memory);
 
 #endif // ZHC_PLATFORM_H
