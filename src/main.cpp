@@ -212,11 +212,11 @@ int main(int argc, char *argv[])
                     {
                         case Command_Type_Rect:
                         {
-                            zhc_render_rect(&memory);
+                            zhc_render_rect(&memory, cmd->rect_cmd.rect, cmd->rect_cmd.color);
                         } break;
                         case Command_Type_Text:
                         {
-                            zhc_render_text(&memory);
+                            zhc_render_text(&memory, cmd->text_cmd.rect, cmd->text_cmd.color, cast(char *)cmd->text_cmd.text);
                         } break;
                         default:
                         {
@@ -224,6 +224,8 @@ int main(int argc, char *argv[])
                         }
                     }
                 }
+
+                SDL_UpdateWindowSurface(window);
             }
 
             uint64 work_counter = SDL_GetPerformanceCounter();

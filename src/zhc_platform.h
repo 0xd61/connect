@@ -229,6 +229,6 @@ bool32 zhc_next_command(Zhc_Memory *memory, Zhc_Command **cmd);
 // NOTE(dgl): zhc_renderer.cpp
 void zhc_render_init(Zhc_Memory *memory, Zhc_Offscreen_Buffer *buffer);
 void zhc_render_rect(Zhc_Memory *memory, V4 rect, V4 color);
-void zhc_render_text(Zhc_Memory *memory);
+void zhc_render_text(Zhc_Memory *memory, V4 rect, V4 color, char *text);
 
 #endif // ZHC_PLATFORM_H

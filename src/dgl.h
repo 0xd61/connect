@@ -88,6 +88,10 @@ extern "C" {
 #define dgl_assert(cond, msg)
 #endif
 
+#define dgl_max(a,b) ((a) > (b) ? (a) : (b))
+#define dgl_min(a,b) ((a) < (b) ? (a) : (b))
+#define dgl_clamp(x,lo,hi) (dgl_min((hi), dgl_max((lo), (x))))
+
 //
 // Types
 //
