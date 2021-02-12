@@ -336,52 +336,83 @@ utf8_to_codepoint(char *c, uint32 *dest)
     return(byte_count);
 }
 
-internal void
-draw_text(Zhc_Offscreen_Buffer *buffer, Font *font, char *text, V4 box, V4 color_)
+// NOTE(dgl): returns the x and y position after the
+// latest drawn character.
+internal V2
+draw_text(Zhc_Offscreen_Buffer *buffer, Font *font, char *text, int32 byte_count, V2 pos, V4 color_)
 {
-    // TODO(dgl): use
     char *curr_char = text;
-    int32 x = box.x;
-    int32 y = box.y + dgl_round_real32_to_int32(font->height);
-
+    int32 x = pos.x;
+    int32 y = pos.y;
     uint32 codepoint = 0;
-    while (*curr_char)
+    while(*curr_char && (byte_count-- > 0))
     {
-        curr_char += utf8_to_codepoint(curr_char, &codepoint);
-        stbtt_bakedchar *glyph = font->glyphs + codepoint;
-
-        int32 x_end = x + (glyph->x1 - glyph->x0);
-        if(x_end > (box.x + box.w))
+        // TODO(dgl): should we ignore the drawing of newline characters
+        // and leave this to the caller function?
+        if(*curr_char == '\n')
         {
-            // NOTE(dgl): skip space if we started a new line.
-            x = box.x;
             y += dgl_round_real32_to_int32(font->height + font->linegap);
+            x = pos.x;
+            ++curr_char;
+            continue;
         }
 
-        // TODO(dgl): Should we flag an overflow?
-        if(y > (box.y + box.h)) break; // NOTE(dgl): no need to render invisible text.
+        curr_char += utf8_to_codepoint(curr_char, &codepoint);
+        stbtt_bakedchar *glyph = font->glyphs + codepoint;
 
         draw_image(buffer,
                    font->bitmap,
                    rect(glyph->x0, glyph->y0, glyph->x1 - glyph->x0, glyph->y1 - glyph->y0),
                    v2(x + dgl_round_real32_to_int32(glyph->xoff), y + dgl_round_real32_to_int32(glyph->yoff)), color_);
 
-        x += cast(int32)glyph->xadvance;
+        x += dgl_round_real32_to_int32(glyph->xadvance);
     }
 
-#if 1
-    draw_rectangle(buffer, rect(box.x - 1, box.y, 1, box.h), color(1.0f, 0.0f, 0.0f, 1.0f));
-    draw_rectangle(buffer, rect(box.x, box.y - 1, box.w, 1), color(1.0f, 0.0f, 0.0f, 1.0f));
-    draw_rectangle(buffer, rect(box.x + box.w, box.y, 1, box.h), color(1.0f, 0.0f, 0.0f, 1.0f));
-    draw_rectangle(buffer, rect(box.x, box.y + box.h, box.w, 1), color(1.0f, 0.0f, 0.0f, 1.0f));
-#endif
+    V2 result = v2(x,y);
+    return(result);
 }
+
+internal int32
+get_font_width(Font *font, char *text, int32 byte_count)
+{
+    char *c = text;
+    int32 result = 0;
+    uint32 codepoint = 0;
+    while(*c && (byte_count-- > 0))
+    {
+        c += utf8_to_codepoint(c, &codepoint);
+        stbtt_bakedchar *glyph = font->glyphs + codepoint;
+        result += dgl_round_real32_to_int32(glyph->xadvance);
+    }
+
+    return(result);
+}
+
+// NOTE(dgl): target is a string to support utf8 sequences
+internal int32
+next_word_byte_count(char *text)
+{
+    int32 result = 0;
+    char *c = text;
+    while(*c)
+    {
+        if((*c == ' ') || (*c == '\n') ||
+           (*c == ';') || (*c == '-'))
+        {
+            break;
+        }
+        c++; result++;
+    }
+
+    return(result);
+}
+
 
 void
 zhc_render_rect(Zhc_Memory *memory, V4 rect, V4 color)
 {
     Render *r = get_renderer(memory);
-    assert(r->is_initialized, "Render must be initialized");
+    assert(r->is_initialized, "Render struct must be initialized");
     draw_rectangle(r->draw_buffer, rect, color);
 }
 
@@ -389,6 +420,40 @@ void
 zhc_render_text(Zhc_Memory *memory, V4 rect, V4 color, char *text)
 {
     Render *r = get_renderer(memory);
-    assert(r->is_initialized, "Render must be initialized");
-    draw_text(r->draw_buffer, r->font, text, rect, color);
+    assert(r->is_initialized, "Render struct must be initialized");
+
+    char *c = text;
+    int32 y = rect.y;
+    int32 x = rect.x;
+    int32 max_x = rect.x + rect.w;
+
+    // TODO(dgl): @@cleanup drawing with newline is kinda janky
+    while(*c)
+    {
+        int32 word_byte_count = next_word_byte_count(c) + 1;
+        int32 word_width = get_font_width(r->font, c, word_byte_count);
+
+        if((x + word_width) > max_x)
+        {
+            y += dgl_round_real32_to_int32(r->font->height + r->font->linegap);
+            x = rect.x;
+            //word_byte_count;
+
+        }
+
+        V2 pos = draw_text(r->draw_buffer, r->font, c, word_byte_count, v2(x, y), color);
+        LOG_DEBUG("Last char pos: %dx %dy, stored pos: %dx %dy", pos.x, pos.y, x, y);
+
+        // NOTE(dgl): check if we have had a newline
+        if(pos.y > y)
+        {
+            y = pos.y;
+            x = rect.x;
+        }
+        else
+        {
+            x += word_width;
+        }
+        c += word_byte_count;
+    }
 }

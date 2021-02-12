@@ -81,7 +81,7 @@ zhc_update(Zhc_Memory *memory, Zhc_Input *input)
         dgl_mem_arena_push_array(&state->transient_arena, uint8, state->commands.size);
 
     push_rect(&state->commands, rect(0, 0, input->window.w, input->window.h), color(1.0f,.8f,.3f,1.0f));
-    push_text(&state->commands, rect(100, 100, 300, 200), color(0.0f, 0.0f, 0.0f, 1.0f), "Das ist ein Test und ein ganz langer langer text. Ich hoffeeeeee, dieser Text ist nicht zu lange.");
+    push_text(&state->commands, rect(100, 100, 80, 200), color(0.0f, 0.0f, 0.0f, 1.0f), "Das ist ein Test und ein ganz langer langer text. Und hier ist ein newline I c h h o f f e e e e e e, dieser Text ist nicht zu lange.");
 }
 
 // NOTE(dgl): call this function only after zhc_update!!
