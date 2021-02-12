@@ -34,9 +34,9 @@
 
 typedef struct Image
 {
+    uint32 *pixels;
     int32 width;
     int32 height;
-    uint32 *pixels;
 } Image;
 
 struct Font
@@ -98,7 +98,7 @@ initialize_font(DGL_Mem_Arena *arena, uint8 *ttf_buffer, real32 font_size)
     real32 scale = stbtt_ScaleForPixelHeight(&result->stbfont, result->size);
     // NOTE(dgl): linegap is defined by the font. However it was 0 in the fonts I
     // have tested.
-    result->linegap = cast(real32)linegap;
+    result->linegap = 1.2f; //cast(real32)linegap;
     result->height = cast(real32)(ascent - descent) * scale;
 
     // build bitmap
@@ -162,7 +162,7 @@ zhc_render_init(Zhc_Memory *memory, Zhc_Offscreen_Buffer *buffer)
     uint8 *ttf_buffer = dgl_mem_arena_push_array(&r->arena, uint8, file_size);
     bool32 success = r->api.read_entire_file(path, ttf_buffer, file_size);
     assert(success, "Could not initialize default font");
-    r->font = initialize_font(&r->arena, ttf_buffer, 12.0f);
+    r->font = initialize_font(&r->arena, ttf_buffer, 21.0f);
 
     r->is_initialized = true;
 }
@@ -236,48 +236,62 @@ draw_rectangle(Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
 internal void
 draw_image(Zhc_Offscreen_Buffer *buffer, Image *image, V4 rect, V2 pos, V4 color)
 {
+    // TODO(dgl): Something is not right. An image 100x100 is drawm only about 1/3.
+
     // TODO(dgl): refactor image and offset position
     // this is currently not overflow safe.
 
-    int32 min_x = rect.x;
-    int32 min_y = rect.y;
-    int32 max_x = rect.x + rect.w;
-    int32 max_y = rect.y + rect.h;
+    int32 src_min_x = dgl_clamp(rect.x, 0, image->width);
+    int32 src_min_y = dgl_clamp(rect.y, 0, image->height);
+    int32 src_max_x = dgl_clamp(rect.x + rect.w, src_min_x, image->width);
+    int32 src_max_y = dgl_clamp(rect.y + rect.h, src_min_y, image->height);
 
-    int32 pos_x = pos.x;
-    int32 pos_y = pos.y;
+    LOG_DEBUG("src_min_x %d, src_min_y %d, src_max_x %d, src_max_y %d", src_min_x, src_min_y, src_max_x , src_max_y);
 
-    min_x = dgl_clamp(min_x, 0, min_x);
-    min_y = dgl_clamp(min_y, 0, min_y);
-    max_x = dgl_clamp(max_x, max_x, dgl_min(buffer->width, image->width));
-    max_y = dgl_clamp(max_y, max_y, dgl_min(buffer->height, image->height));
+    int32 dest_min_x = dgl_clamp(pos.x, 0, buffer->width);
+    int32 dest_min_y = dgl_clamp(pos.y, 0, buffer->height);
+    int32 dest_max_x = dgl_clamp(pos.x + rect.w, dest_min_x, buffer->width);
+    int32 dest_max_y = dgl_clamp(pos.y + rect.h, dest_min_y, buffer->height);
+
+    LOG_DEBUG("dest_min_x %d, dest_min_y %d, dest_max_x %d, dest_max_y %d", dest_min_x, dest_min_y, dest_max_x , dest_max_y);
 
     uint32 *source_row = image->pixels +
-                         min_x +
-                         min_y*image->width;
+                         src_min_x +
+                         src_min_y*image->width;
 
     uint8 *dest_row = ((uint8 *)buffer->memory +
-                      pos_x*buffer->bytes_per_pixel +
-                      pos_y*(int32)buffer->pitch);
+                      dest_min_x*buffer->bytes_per_pixel +
+                      dest_min_y*buffer->pitch);
 
-    for(int32 y = min_y;
-        y < max_y;
-        ++y)
+
+    int32 dest_y = dest_min_y;
+    int32 src_y = src_min_y;
+    while(src_y < src_max_y)
     {
         uint32 *source = source_row;
         uint32 *dest = (uint32 *)dest_row;
-        for(int32 x = min_x;
-            x < max_x;
-            ++x)
+        int32 src_x = src_min_x;
+        int32 dest_x = dest_min_x;
+
+        while(src_x < src_max_x)
         {
-            *dest = blend_pixel(*source, *dest, color);
+            if(dest_y < dest_max_y && dest_x < dest_max_x)
+            {
+                *dest = blend_pixel(*source, *dest, color);
+            }
 
             source++;
             dest++;
+            src_x++;
+            dest_x++;
+
         }
 
         dest_row += buffer->pitch;
         source_row += image->width;
+
+        src_y++;
+        dest_y++;
     }
 }
 
@@ -423,7 +437,7 @@ zhc_render_text(Zhc_Memory *memory, V4 rect, V4 color, char *text)
     assert(r->is_initialized, "Render struct must be initialized");
 
     char *c = text;
-    int32 y = rect.y;
+    int32 y = rect.y + dgl_round_real32_to_int32(r->font->height);
     int32 x = rect.x;
     int32 max_x = rect.x + rect.w;
 
@@ -437,12 +451,9 @@ zhc_render_text(Zhc_Memory *memory, V4 rect, V4 color, char *text)
         {
             y += dgl_round_real32_to_int32(r->font->height + r->font->linegap);
             x = rect.x;
-            //word_byte_count;
-
         }
 
         V2 pos = draw_text(r->draw_buffer, r->font, c, word_byte_count, v2(x, y), color);
-        LOG_DEBUG("Last char pos: %dx %dy, stored pos: %dx %dy", pos.x, pos.y, x, y);
 
         // NOTE(dgl): check if we have had a newline
         if(pos.y > y)
