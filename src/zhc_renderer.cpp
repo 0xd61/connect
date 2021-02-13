@@ -157,7 +157,8 @@ zhc_render_init(Zhc_Memory *memory, Zhc_Offscreen_Buffer *buffer)
     dgl_mem_arena_init(&r->arena, (uint8 *)memory->render_storage + sizeof(*r), (DGL_Mem_Index)memory->render_storage_size - sizeof(*r));
 
     // TODO(dgl): make this call relative.
-    char *path = "/home/danielg/Code/C/connect/data/Inter-Regular.ttf";
+    // load dependent of executable path
+    char *path = "./data/Inter-Regular.ttf";
     usize file_size = r->api.file_size(path);
     uint8 *ttf_buffer = dgl_mem_arena_push_array(&r->arena, uint8, file_size);
     bool32 success = r->api.read_entire_file(path, ttf_buffer, file_size);
@@ -350,24 +351,18 @@ utf8_to_codepoint(char *c, uint32 *dest)
     return(byte_count);
 }
 
-// NOTE(dgl): returns the x and y position after the
-// latest drawn character.
-internal V2
+// NOTE(dgl): ignores newline characters.
+internal void
 draw_text(Zhc_Offscreen_Buffer *buffer, Font *font, char *text, int32 byte_count, V2 pos, V4 color_)
 {
     char *curr_char = text;
     int32 x = pos.x;
-    int32 y = pos.y;
     uint32 codepoint = 0;
     while(*curr_char && (byte_count-- > 0))
     {
-        // TODO(dgl): should we ignore the drawing of newline characters
-        // and leave this to the caller function?
+        // TODO(dgl): ignore newline characters.
         if(*curr_char == '\n')
         {
-            y += dgl_round_real32_to_int32(font->height + font->linegap);
-            x = pos.x;
-            ++curr_char;
             continue;
         }
 
@@ -377,13 +372,10 @@ draw_text(Zhc_Offscreen_Buffer *buffer, Font *font, char *text, int32 byte_count
         draw_image(buffer,
                    font->bitmap,
                    rect(glyph->x0, glyph->y0, glyph->x1 - glyph->x0, glyph->y1 - glyph->y0),
-                   v2(x + dgl_round_real32_to_int32(glyph->xoff), y + dgl_round_real32_to_int32(glyph->yoff)), color_);
+                   v2(x + dgl_round_real32_to_int32(glyph->xoff), pos.y + dgl_round_real32_to_int32(glyph->yoff)), color_);
 
         x += dgl_round_real32_to_int32(glyph->xadvance);
     }
-
-    V2 result = v2(x,y);
-    return(result);
 }
 
 internal int32
@@ -441,9 +433,11 @@ zhc_render_text(Zhc_Memory *memory, V4 rect, V4 color, char *text)
     int32 x = rect.x;
     int32 max_x = rect.x + rect.w;
 
-    // TODO(dgl): @@cleanup drawing with newline is kinda janky
     while(*c)
     {
+        // NOTE(dgl): we add 1 to have the divider also rendered at the end of the word.
+        // After drawing we check if the divider was a newline. If it was, we increase
+        // y by one line. THe divier characters are all in ACII, hence only 1 byte long.
         int32 word_byte_count = next_word_byte_count(c) + 1;
         int32 word_width = get_font_width(r->font, c, word_byte_count);
 
@@ -453,18 +447,18 @@ zhc_render_text(Zhc_Memory *memory, V4 rect, V4 color, char *text)
             x = rect.x;
         }
 
-        V2 pos = draw_text(r->draw_buffer, r->font, c, word_byte_count, v2(x, y), color);
+        draw_text(r->draw_buffer, r->font, c, word_byte_count, v2(x, y), color);
 
-        // NOTE(dgl): check if we have had a newline
-        if(pos.y > y)
+
+        c += word_byte_count;
+        if(*(c - 1) == '\n')
         {
-            y = pos.y;
+            y += dgl_round_real32_to_int32(r->font->height + r->font->linegap);
             x = rect.x;
         }
         else
         {
             x += word_width;
         }
-        c += word_byte_count;
     }
 }
