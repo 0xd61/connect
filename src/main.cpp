@@ -13,8 +13,89 @@
 
 #include <sys/mman.h> /* mmap */
 #include <string.h> /* memset, memcpy */
+// NOTE(dgl): On Windows this is only included in the MinGW compiler,
+// not in Microsoft Visual C++.
+#include <dirent.h> /* opendir, readdir */
 
 global bool32 global_running;
+
+ZHC_FILE_SIZE(sdl_file_size)
+{
+    usize result = 0;
+    SDL_RWops *io = SDL_RWFromFile(filename, "rb");
+    int64 size = SDL_RWsize(io);
+    assert(size > 0, "Failed to find file");
+    result = cast(usize)size;
+    SDL_RWclose(io);
+    return(result);
+}
+
+internal Zhc_File_Info *
+allocate_file_info(Zhc_File_Group *group, char *filename, usize filename_size)
+{
+    Zhc_File_Info *result = dgl_mem_arena_push_struct(group->arena, Zhc_File_Info);
+    result->next = group->first_file_info;
+    result->filename = dgl_mem_arena_push_array(group->arena, char, filename_size + 1);
+
+    dgl_memcpy(result->filename, filename, filename_size);
+    result->filename[filename_size] = '\0';
+    group->first_file_info = result;
+    group->count++;
+
+    return(result);
+}
+
+ZHC_GET_DIRECTORY_FILENAMES(get_directory_filenames)
+{
+    Zhc_File_Group *result = 0;
+    DIR *dir = opendir(path);
+    if(dir)
+    {
+        result = dgl_mem_arena_push_struct(arena, Zhc_File_Group);
+        result->arena = arena;
+
+        struct dirent *entry;
+        while((entry = readdir(dir)))
+        {
+            if(entry->d_name[0] == '.' &&
+               entry->d_name[1] == '\0'){ continue; }
+
+            if(entry->d_name[0] == '.' &&
+               entry->d_name[1] == '.' &&
+               entry->d_name[2] == '\0'){ continue; }
+
+            usize name_count = string_length(entry->d_name);
+            Zhc_File_Info *info = allocate_file_info(result, entry->d_name, name_count);
+            DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(result->arena);
+
+            usize dirname_count = string_length(path);
+            char *separator = "";
+#ifdef _WIN32
+            if(path[dirname_count-1] != '\\') { separator = "\\"; }
+#else
+            if(path[dirname_count-1] != '/') { separator = "/"; }
+#endif
+
+            usize separator_count = string_length(separator);
+            usize filepath_count = dirname_count + separator_count + name_count;
+            char *filepath = dgl_mem_arena_push_array(temp.arena, char, filepath_count + 1);
+
+            // TODO(dgl): better filepath appending.
+            void *dest = filepath;
+            dgl_memcpy(dest, path, dirname_count);
+            dest = (char *)dest + dirname_count;
+            dgl_memcpy(dest, separator, separator_count);
+            dest = (char *)dest + separator_count;
+            dgl_memcpy(dest, info->filename, name_count);
+            filepath[filepath_count] = '\0';
+
+            info->size = sdl_file_size(filepath);
+            dgl_mem_arena_end_temp(temp);
+        }
+    }
+
+    return(result);
+}
 
 ZHC_READ_ENTIRE_FILE(sdl_read_entire_file)
 {
@@ -30,17 +111,6 @@ ZHC_READ_ENTIRE_FILE(sdl_read_entire_file)
     }
     SDL_RWclose(io);
 
-    return(result);
-}
-
-ZHC_FILE_SIZE(sdl_file_size)
-{
-    usize result = 0;
-    SDL_RWops *io = SDL_RWFromFile(filename, "rb");
-    int64 size = SDL_RWsize(io);
-    assert(size > 0, "Failed to find file");
-    result = cast(usize)size;
-    SDL_RWclose(io);
     return(result);
 }
 
@@ -65,9 +135,9 @@ int main(int argc, char *argv[])
     SDL_DisableScreenSaver();
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
-    uint64 target_frame_rate = 10;
-    uint64 target_frame_ticks = (target_frame_rate * SDL_GetPerformanceFrequency()) / 1000;
-    real32 target_ms_per_frame = (1.0f / cast(real32)target_frame_rate) * 1000.0f;
+    uint64 target_fps = 30;
+    uint64 target_frame_ticks = (SDL_GetPerformanceFrequency() / target_fps);
+    real32 target_ms_per_frame = (1.0f / cast(real32)target_fps) * 1000.0f;
 
     SDL_Window *window =
         SDL_CreateWindow("Connect",
@@ -96,6 +166,7 @@ int main(int argc, char *argv[])
         memory.render_storage = cast(uint8 *)memory_block + memory.update_storage_size;
         memory.api.read_entire_file = sdl_read_entire_file;
         memory.api.file_size = sdl_file_size;
+        memory.api.get_directory_filenames = get_directory_filenames;
 
         Zhc_Offscreen_Buffer back_buffer = {};
         Zhc_Input input = {};
@@ -106,15 +177,15 @@ int main(int argc, char *argv[])
 
         uint64 perf_count_frequency = SDL_GetPerformanceFrequency();
         uint64 last_counter = SDL_GetPerformanceCounter();
+        real32 last_frame_in_ms = 0;
         global_running = true;
         while(global_running)
         {
             zhc_input_reset(&input);
             SDL_Event event;
-            bool32 rerender = false;
+
             while(SDL_PollEvent(&event))
             {
-                rerender = true;
                 switch(event.type)
                 {
                     case SDL_QUIT: { global_running = false; } break;
@@ -193,6 +264,7 @@ int main(int argc, char *argv[])
                     default: {}
                 }
             }
+
             SDL_Surface *surf = SDL_GetWindowSurface(window);
             back_buffer.width = surf->w;
             back_buffer.height = surf->h;
@@ -201,32 +273,36 @@ int main(int argc, char *argv[])
             back_buffer.memory = surf->pixels;
             zhc_window_resize(&input, v2(back_buffer.width, back_buffer.height));
 
-            if(rerender)
-            {
-                zhc_update(&memory, &input);
+            input.last_frame_in_ms = last_frame_in_ms;
+            zhc_update(&memory, &input);
 
-                Zhc_Command *cmd = 0;
-                while(zhc_next_command(&memory, &cmd))
+            bool32 do_render = false;
+            Zhc_Command *cmd = 0;
+            while(zhc_next_command(&memory, &cmd))
+            {
+                do_render = true;
+                switch(cmd->type)
                 {
-                    switch(cmd->type)
+                    case Command_Type_Rect:
                     {
-                        case Command_Type_Rect:
-                        {
-                            zhc_render_rect(&memory, cmd->rect_cmd.rect, cmd->rect_cmd.color);
-                        } break;
-                        case Command_Type_Text:
-                        {
-                            zhc_render_text(&memory, cmd->text_cmd.rect, cmd->text_cmd.color, cast(char *)cmd->text_cmd.text);
-                        } break;
-                        default:
-                        {
-                            LOG("Command type not supported");
-                        }
+                        zhc_render_rect(&memory, cmd->rect_cmd.rect, cmd->rect_cmd.color);
+                    } break;
+                    case Command_Type_Text:
+                    {
+                        zhc_render_text(&memory, cmd->text_cmd.rect, cmd->text_cmd.color, cast(char *)cmd->text_cmd.text);
+                    } break;
+                    default:
+                    {
+                        LOG("Command type not supported");
                     }
                 }
+            }
 
+            if(do_render)
+            {
                 SDL_UpdateWindowSurface(window);
             }
+
 
             uint64 work_counter = SDL_GetPerformanceCounter();
             uint64 work_ticks_elapsed = work_counter - last_counter;
@@ -248,13 +324,13 @@ int main(int argc, char *argv[])
 
 
             uint64 end_counter = SDL_GetPerformanceCounter();
-
-#if 0
             uint64 counter_elapsed = end_counter - last_counter;
-            real32 ms_per_frame = (((1000.0f * (real32)counter_elapsed) / (real32)perf_count_frequency));
+            last_frame_in_ms = (((1000.0f * (real32)counter_elapsed) / (real32)perf_count_frequency));
+
+#if 1
             real32 fps = (real32)perf_count_frequency / (real32)counter_elapsed;
 
-            LOG("%.02f ms/f, %.02ff/s", ms_per_frame, fps);
+            LOG("%.02f ms/f, %.02ff/s", last_frame_in_ms, fps);
 #endif
             last_counter = end_counter;
         }

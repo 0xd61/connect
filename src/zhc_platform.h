@@ -121,6 +121,7 @@ enum Zhc_Keyboard_Button
 
 struct Zhc_Input
 {
+    real32 last_frame_in_ms;
     V2 window;
 
     V2 pos;
@@ -134,6 +135,22 @@ struct Zhc_Input
 
     // NOTE(dgl): text from text input event
     char text[32];
+};
+
+struct Zhc_File_Info
+{
+    Zhc_File_Info *next;
+    // NOTE(dgl): only filename, without path
+    char *filename;
+    usize size;
+};
+
+// NOTE(dgl): files are stored in reverse order.
+struct Zhc_File_Group
+{
+    int32 count;
+    Zhc_File_Info *first_file_info;
+    DGL_Mem_Arena *arena;
 };
 
 inline void
@@ -169,10 +186,10 @@ zhc_window_resize(Zhc_Input *input, V2 dim)
     input->window = dim;
 }
 
-internal int32
+internal usize
 string_length(char *s)
 {
-    int32 result = 0;
+    usize result = 0;
     while(*s++) { ++result; }
 
     return(result);
@@ -181,12 +198,12 @@ string_length(char *s)
 inline void
 zhc_input_text(Zhc_Input *input, char *text)
 {
-    int32 len = string_length(input->text);
-    int32 size = string_length(text);
+    usize len = string_length(input->text);
+    usize size = string_length(text);
 
     assert(len + size < array_count(input->text), "Text input overflow");
     char *dest = input->text + len;
-    dgl_memcpy(dest, text, cast(usize)size);
+    dgl_memcpy(dest, text, size);
     dest[size] = '\0';
 }
 
@@ -201,12 +218,15 @@ zhc_input_reset(Zhc_Input *input)
 }
 
 // NOTE(dgl): Global api. Use separate api file later...
+#define ZHC_GET_DIRECTORY_FILENAMES(name) Zhc_File_Group * name(DGL_Mem_Arena *arena, char *path)
+typedef ZHC_GET_DIRECTORY_FILENAMES(Zhc_Get_Directory_Filenames);
 #define ZHC_FILE_SIZE(name) usize name(char *filename)
 typedef ZHC_FILE_SIZE(Zhc_File_Size);
 #define ZHC_READ_ENTIRE_FILE(name) bool32 name(char *filename, uint8 *buffer, usize buffer_size)
 typedef ZHC_READ_ENTIRE_FILE(Zhc_Read_Entire_File);
 struct Zhc_Platform_Api
 {
+    Zhc_Get_Directory_Filenames *get_directory_filenames;
     Zhc_File_Size *file_size;
     Zhc_Read_Entire_File *read_entire_file;
 };

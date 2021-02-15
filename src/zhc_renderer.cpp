@@ -205,7 +205,7 @@ draw_rectangle(Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
     int32 min_y = rect.y;
     int32 max_x = rect.x + rect.w;
     int32 max_y = rect.y + rect.h;
-    LOG_DEBUG("Drawing rectangle: min X: %d, min Y: %d, max X: %d, max Y: %d", min_x, min_y, max_x, max_y);
+    //LOG_DEBUG("Drawing rectangle: min X: %d, min Y: %d, max X: %d, max Y: %d", min_x, min_y, max_x, max_y);
 
 
     min_x = dgl_clamp(min_x, 0, min_x);
@@ -247,14 +247,10 @@ draw_image(Zhc_Offscreen_Buffer *buffer, Image *image, V4 rect, V2 pos, V4 color
     int32 src_max_x = dgl_clamp(rect.x + rect.w, src_min_x, image->width);
     int32 src_max_y = dgl_clamp(rect.y + rect.h, src_min_y, image->height);
 
-    LOG_DEBUG("src_min_x %d, src_min_y %d, src_max_x %d, src_max_y %d", src_min_x, src_min_y, src_max_x , src_max_y);
-
     int32 dest_min_x = dgl_clamp(pos.x, 0, buffer->width);
     int32 dest_min_y = dgl_clamp(pos.y, 0, buffer->height);
     int32 dest_max_x = dgl_clamp(pos.x + rect.w, dest_min_x, buffer->width);
     int32 dest_max_y = dgl_clamp(pos.y + rect.h, dest_min_y, buffer->height);
-
-    LOG_DEBUG("dest_min_x %d, dest_min_y %d, dest_max_x %d, dest_max_y %d", dest_min_x, dest_min_y, dest_max_x , dest_max_y);
 
     uint32 *source_row = image->pixels +
                          src_min_x +

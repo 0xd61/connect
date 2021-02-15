@@ -1,5 +1,13 @@
 #include "zhc_platform.h"
 
+global Zhc_Platform_Api platform;
+
+struct File
+{
+    char *path;
+    uint8 *data;
+};
+
 struct Command_List
 {
     usize offset;
@@ -13,6 +21,10 @@ struct Lib_State
     DGL_Mem_Arena transient_arena; // NOTE(dgl): cleared on each frame
 
     Command_List commands;
+
+    Zhc_File_Group *files;
+    real32 folder_scan_timeout;
+
 
     bool32 is_initialized;
 };
@@ -46,7 +58,7 @@ push_rect(Command_List *list, V4 rect, V4 color)
 internal void
 push_text(Command_List *list, V4 rect, V4 color, char *text)
 {
-    usize size = cast(usize)string_length(text) + 1;
+    usize size = string_length(text) + 1;
     Zhc_Command *cmd = push_command(list, Command_Type_Text, sizeof(Zhc_Command) + size);
 
     dgl_memcpy(cmd->text_cmd.text, text, size);
@@ -58,6 +70,7 @@ void
 zhc_update(Zhc_Memory *memory, Zhc_Input *input)
 {
     assert(sizeof(Lib_State) < memory->update_storage_size, "Not enough memory allocated");
+    platform = memory->api;
 
     Lib_State *state = cast(Lib_State *)memory->update_storage;
     if(!state->is_initialized)
@@ -79,6 +92,29 @@ zhc_update(Zhc_Memory *memory, Zhc_Input *input)
 
     state->commands.memory =
         dgl_mem_arena_push_array(&state->transient_arena, uint8, state->commands.size);
+
+        // TODO(dgl): let user set directory in GUI
+    char *target_dir = "./data/files";
+    // TODO(dgl): only refresh the files every 10 seconds.
+    // how do we handle the memory management then?
+    if(target_dir)
+    {
+        Zhc_File_Group *group = platform.get_directory_filenames(&state->transient_arena, target_dir);
+
+        // TODO(dgl): get file info for each file (size and modified timestamp)
+        // reload current file, if it has changed
+        Zhc_File_Info *info = group->first_file_info;
+        while(info)
+        {
+            LOG_DEBUG("Filename %s, size: %u", info->filename, info->size);
+            info = info->next;
+        }
+
+        if(group)
+        {
+            state->files = group;
+        }
+    }
 
     V4 button = rect(0, 0, 50, 50);
     V2 menu_pos = v2(input->window.w - 3*(button.w + 20), 20);
