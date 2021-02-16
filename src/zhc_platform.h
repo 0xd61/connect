@@ -151,6 +151,7 @@ struct Zhc_File_Group
     int32 count;
     Zhc_File_Info *first_file_info;
     DGL_Mem_Arena *arena;
+    char *dirpath;
 };
 
 inline void

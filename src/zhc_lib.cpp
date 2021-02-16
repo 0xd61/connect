@@ -4,7 +4,7 @@ global Zhc_Platform_Api platform;
 
 struct File
 {
-    char *path;
+    Zhc_File_Info *info;
     uint8 *data;
 };
 
@@ -22,6 +22,8 @@ struct Lib_State
 
     Command_List commands;
 
+
+    File active_file;
     Zhc_File_Group *files;
     real32 folder_scan_timeout;
 
@@ -66,6 +68,50 @@ push_text(Command_List *list, V4 rect, V4 color, char *text)
     cmd->text_cmd.color = color;
 }
 
+internal Zhc_File_Info *
+next_file_info(Zhc_File_Group *group, Zhc_File_Info *current)
+{
+    Zhc_File_Info *result = 0;
+
+
+    Zhc_File_Info *info = group->first_file_info;
+    Zhc_File_Info *last = info;
+    while(info)
+    {
+        if(info == current)
+        {
+            break;
+        }
+
+        last = info;
+        info = info->next;
+    }
+
+    result = last;
+    return(result);
+}
+
+// NOTE(dgl): if current_file.info == 0, we load the first file.
+internal File
+load_active_file(DGL_Mem_Arena *arena, Zhc_File_Group *group, File current_file)
+{
+    File result = {};
+
+    if(group)
+    {
+        result.info = next_file_info(group, current_file.info);
+        result.data = dgl_mem_arena_push_array(arena, uint8, result.info->size);
+
+        // TODO(dgl): do proper string handling
+        char filepath[1024] = {};
+
+        sprintf(filepath, "%s/%s", group->dirpath, result.info->filename);
+        LOG_DEBUG("Loading file %s", filepath);
+        platform.read_entire_file(filepath, result.data, result.info->size);
+    }
+    return(result);
+}
+
 void
 zhc_update(Zhc_Memory *memory, Zhc_Input *input)
 {
@@ -78,6 +124,33 @@ zhc_update(Zhc_Memory *memory, Zhc_Input *input)
         LOG_DEBUG("Lib_State size: %lld, Available memory: %lld", sizeof(*state), memory->update_storage_size);
         dgl_mem_arena_init(&state->permanent_arena, (uint8 *)memory->update_storage + sizeof(*state), ((DGL_Mem_Index)memory->update_storage_size - sizeof(*state))/2);
         dgl_mem_arena_init(&state->transient_arena, state->permanent_arena.base + state->permanent_arena.size, (DGL_Mem_Index)memory->update_storage_size - state->permanent_arena.size);
+
+
+        // TODO(dgl): let user set directory in GUI
+        char *target_dir = "./data/files";
+
+        // TODO(dgl): refresh the files every 10 seconds.
+        // how do we handle the memory management then?
+        if(target_dir)
+        {
+            Zhc_File_Group *group = platform.get_directory_filenames(&state->permanent_arena, target_dir);
+
+            // TODO(dgl): get file info for each file (size and modified timestamp)
+            // reload current file, if it has changed
+            Zhc_File_Info *info = group->first_file_info;
+            while(info)
+            {
+                LOG_DEBUG("Filename %s, size: %u", info->filename, info->size);
+                info = info->next;
+            }
+
+            if(group)
+            {
+                state->files = group;
+                state->active_file = load_active_file(&state->permanent_arena, state->files, state->active_file);
+            }
+        }
+
 
         state->is_initialized = true;
     }
@@ -93,37 +166,27 @@ zhc_update(Zhc_Memory *memory, Zhc_Input *input)
     state->commands.memory =
         dgl_mem_arena_push_array(&state->transient_arena, uint8, state->commands.size);
 
-        // TODO(dgl): let user set directory in GUI
-    char *target_dir = "./data/files";
-    // TODO(dgl): only refresh the files every 10 seconds.
-    // how do we handle the memory management then?
-    if(target_dir)
-    {
-        Zhc_File_Group *group = platform.get_directory_filenames(&state->transient_arena, target_dir);
-
-        // TODO(dgl): get file info for each file (size and modified timestamp)
-        // reload current file, if it has changed
-        Zhc_File_Info *info = group->first_file_info;
-        while(info)
-        {
-            LOG_DEBUG("Filename %s, size: %u", info->filename, info->size);
-            info = info->next;
-        }
-
-        if(group)
-        {
-            state->files = group;
-        }
-    }
-
     V4 button = rect(0, 0, 50, 50);
     V2 menu_pos = v2(input->window.w - 3*(button.w + 20), 20);
     push_rect(&state->commands, rect(0, 0, input->window.w, input->window.h), color(1.0f,1.0f,1.0f,1.0f));
     push_rect(&state->commands, rect(menu_pos.x, menu_pos.y, button.w, button.h), color(1.0f,.8f,.3f,1.0f));
     push_rect(&state->commands, rect(menu_pos.x + button.w + 20, menu_pos.y, button.w, button.h), color(1.0f,.8f,.3f,1.0f));
     push_rect(&state->commands, rect(menu_pos.x + 2*(button.w + 20), menu_pos.y, button.w, button.h), color(1.0f,.8f,.3f,1.0f));
-    LOG_DEBUG("Window %dx%d", input->window.w, input->window.h);
-    push_text(&state->commands, rect(20, menu_pos.y + button.h + 10, input->window.w - 2*20, input->window.h - 20), color(0.0f, 0.0f, 0.0f, 1.0f), "Das ist ein Test und ein ganz langer langer text. Und hier ist ein newline\nI c h h o f f e e e e e e, dieser Text ist nicht zu lange.");
+
+    state->folder_scan_timeout += input->last_frame_in_ms;
+    if(state->folder_scan_timeout > 10000.0f && state->files->count > 0)
+    {
+        state->folder_scan_timeout = 0.0f;
+        state->active_file = load_active_file(&state->permanent_arena, state->files, state->active_file);
+
+    }
+    
+    if(state->active_file.data)
+    {
+        push_text(&state->commands, rect(100, menu_pos.y + button.h + 10, input->window.w - 2*20, input->window.h - 100), color(0.0f, 0.0f, 0.0f, 1.0f), (char *)state->active_file.data);
+    }
+
+
 }
 
 // NOTE(dgl): call this function only after zhc_update!!

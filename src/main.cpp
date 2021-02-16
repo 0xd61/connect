@@ -53,6 +53,11 @@ ZHC_GET_DIRECTORY_FILENAMES(get_directory_filenames)
     {
         result = dgl_mem_arena_push_struct(arena, Zhc_File_Group);
         result->arena = arena;
+        usize dirpath_count = string_length(path);
+        result->dirpath = dgl_mem_arena_push_array(arena, char, dirpath_count + 1);
+        dgl_memcpy(result->dirpath, path, dirpath_count);
+
+        result->dirpath[dirpath_count] = '\0';
 
         struct dirent *entry;
         while((entry = readdir(dir)))
@@ -68,22 +73,21 @@ ZHC_GET_DIRECTORY_FILENAMES(get_directory_filenames)
             Zhc_File_Info *info = allocate_file_info(result, entry->d_name, name_count);
             DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(result->arena);
 
-            usize dirname_count = string_length(path);
             char *separator = "";
 #ifdef _WIN32
-            if(path[dirname_count-1] != '\\') { separator = "\\"; }
+            if(path[dirpath_count-1] != '\\') { separator = "\\"; }
 #else
-            if(path[dirname_count-1] != '/') { separator = "/"; }
+            if(path[dirpath_count-1] != '/') { separator = "/"; }
 #endif
 
             usize separator_count = string_length(separator);
-            usize filepath_count = dirname_count + separator_count + name_count;
+            usize filepath_count = dirpath_count + separator_count + name_count;
             char *filepath = dgl_mem_arena_push_array(temp.arena, char, filepath_count + 1);
 
             // TODO(dgl): better filepath appending.
             void *dest = filepath;
-            dgl_memcpy(dest, path, dirname_count);
-            dest = (char *)dest + dirname_count;
+            dgl_memcpy(dest, path, dirpath_count);
+            dest = (char *)dest + dirpath_count;
             dgl_memcpy(dest, separator, separator_count);
             dest = (char *)dest + separator_count;
             dgl_memcpy(dest, info->filename, name_count);
@@ -152,7 +156,7 @@ int main(int argc, char *argv[])
     void *base_address = 0;
 #endif
 
-    usize memory_size = megabytes(4);
+    usize memory_size = megabytes(256);
 
     void *memory_block = mmap(base_address, memory_size,
                               PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
