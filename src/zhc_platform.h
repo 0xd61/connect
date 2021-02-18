@@ -61,34 +61,11 @@ color(real32 r, real32 g, real32 b, real32 a)
     return(result);
 }
 
-enum Zhc_Command_Type
+struct Zhc_Image
 {
-    Command_Type_Rect,
-    Command_Type_Text,
-};
-
-struct Zhc_Rect_Command
-{
-    V4 rect;
-    V4 color;
-};
-
-struct Zhc_Text_Command
-{
-    V4 rect;
-    V4 color;
-    uint8 text[1];
-};
-
-struct Zhc_Command
-{
-    Zhc_Command_Type type;
-    int32 size;
-    union
-    {
-        Zhc_Text_Command text_cmd;
-        Zhc_Rect_Command rect_cmd;
-    };
+    uint32 *pixels;
+    int32 width;
+    int32 height;
 };
 
 struct Zhc_Offscreen_Buffer
@@ -122,7 +99,6 @@ enum Zhc_Keyboard_Button
 struct Zhc_Input
 {
     real32 last_frame_in_ms;
-    V2 window;
 
     V2 pos;
     V2 last_pos;
@@ -181,12 +157,6 @@ zhc_input_scroll(Zhc_Input *input, V2 delta)
     input->scroll_delta.y += delta.y;
 }
 
-inline void
-zhc_window_resize(Zhc_Input *input, V2 dim)
-{
-    input->window = dim;
-}
-
 internal usize
 string_length(char *s)
 {
@@ -211,9 +181,7 @@ zhc_input_text(Zhc_Input *input, char *text)
 inline void
 zhc_input_reset(Zhc_Input *input)
 {
-    input->key_down = 0;
     input->text[0] = '\0';
-    input->mouse_down = 0;
     input->scroll_delta = v2(0, 0);
     input->last_pos = input->pos;
 }
@@ -236,20 +204,10 @@ struct Zhc_Memory
 {
     Zhc_Platform_Api api;
 
-    usize update_storage_size;
-    void *update_storage; // NOTE(dgl): REQUIRED to be cleared to zero at startup
-
-    usize render_storage_size;
-    void *render_storage; // NOTE(dgl): REQUIRED to be cleared to zero at startup
+    usize storage_size;
+    void *storage; // NOTE(dgl): REQUIRED to be cleared to zero at startup
 };
 
 // NOTE(dgl): zhc_lib.cpp
-void zhc_update(Zhc_Memory *memory, Zhc_Input *input);
-bool32 zhc_next_command(Zhc_Memory *memory, Zhc_Command **cmd);
-
-// NOTE(dgl): zhc_renderer.cpp
-void zhc_render_init(Zhc_Memory *memory, Zhc_Offscreen_Buffer *buffer);
-void zhc_render_rect(Zhc_Memory *memory, V4 rect, V4 color);
-void zhc_render_text(Zhc_Memory *memory, V4 rect, V4 color, char *text);
-
+void zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer *buffer);
 #endif // ZHC_PLATFORM_H

@@ -1,6 +1,5 @@
 #include "zhc_platform.h"
 #include "zhc_lib.cpp"
-#include "zhc_renderer.cpp"
 
 #ifdef __ANDROID__
 #include <SDL.h>
@@ -156,7 +155,7 @@ int main(int argc, char *argv[])
     void *base_address = 0;
 #endif
 
-    usize memory_size = megabytes(256);
+    usize memory_size = megabytes(64);
 
     void *memory_block = mmap(base_address, memory_size,
                               PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
@@ -164,20 +163,14 @@ int main(int argc, char *argv[])
     if(memory_block != cast(void *)-1)
     {
         Zhc_Memory memory = {};
-        memory.update_storage_size = memory_size / 2;
-        memory.render_storage_size = memory_size - memory.update_storage_size;
-        memory.update_storage = memory_block;
-        memory.render_storage = cast(uint8 *)memory_block + memory.update_storage_size;
+        memory.storage_size = memory_size;
+        memory.storage = memory_block;
         memory.api.read_entire_file = sdl_read_entire_file;
         memory.api.file_size = sdl_file_size;
         memory.api.get_directory_filenames = get_directory_filenames;
 
         Zhc_Offscreen_Buffer back_buffer = {};
         Zhc_Input input = {};
-
-        // TODO(dgl): maybe it makes more sense to pass the buffer to each render call.
-        // I think this solution is confusing.
-        zhc_render_init(&memory, &back_buffer);
 
         uint64 perf_count_frequency = SDL_GetPerformanceFrequency();
         uint64 last_counter = SDL_GetPerformanceCounter();
@@ -193,13 +186,6 @@ int main(int argc, char *argv[])
                 switch(event.type)
                 {
                     case SDL_QUIT: { global_running = false; } break;
-                    case SDL_WINDOWEVENT:
-                    {
-                        if(event.window.event == SDL_WINDOWEVENT_RESIZED)
-                        {
-                            zhc_window_resize(&input, v2(event.window.data1, event.window.data2));
-                        }
-                    } break;
                     case SDL_TEXTINPUT: { zhc_input_text(&input, event.text.text); } break;
                     case SDL_MOUSEBUTTONDOWN:
                     case SDL_MOUSEBUTTONUP:
@@ -275,37 +261,13 @@ int main(int argc, char *argv[])
             back_buffer.pitch = surf->pitch;
             back_buffer.bytes_per_pixel = surf->format->BytesPerPixel;
             back_buffer.memory = surf->pixels;
-            zhc_window_resize(&input, v2(back_buffer.width, back_buffer.height));
 
             input.last_frame_in_ms = last_frame_in_ms;
-            zhc_update(&memory, &input);
 
-            bool32 do_render = false;
-            Zhc_Command *cmd = 0;
-            while(zhc_next_command(&memory, &cmd))
-            {
-                do_render = true;
-                switch(cmd->type)
-                {
-                    case Command_Type_Rect:
-                    {
-                        zhc_render_rect(&memory, cmd->rect_cmd.rect, cmd->rect_cmd.color);
-                    } break;
-                    case Command_Type_Text:
-                    {
-                        zhc_render_text(&memory, cmd->text_cmd.rect, cmd->text_cmd.color, cast(char *)cmd->text_cmd.text);
-                    } break;
-                    default:
-                    {
-                        LOG("Command type not supported");
-                    }
-                }
-            }
-
-            if(do_render)
-            {
-                SDL_UpdateWindowSurface(window);
-            }
+            // TODO(dgl): only render if necessary
+            // add render cache to only render rects that have changed
+            zhc_update_and_render(&memory, &input, &back_buffer);
+            SDL_UpdateWindowSurface(window);
 
 
             uint64 work_counter = SDL_GetPerformanceCounter();
@@ -331,7 +293,7 @@ int main(int argc, char *argv[])
             uint64 counter_elapsed = end_counter - last_counter;
             last_frame_in_ms = (((1000.0f * (real32)counter_elapsed) / (real32)perf_count_frequency));
 
-#if 1
+#if 0
             real32 fps = (real32)perf_count_frequency / (real32)counter_elapsed;
 
             LOG("%.02f ms/f, %.02ff/s", last_frame_in_ms, fps);

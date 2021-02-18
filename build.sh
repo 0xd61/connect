@@ -41,7 +41,7 @@ if [ "$OS_NAME" == "GNU/Linux" ] || \
     # PIC = Position Independent Code
     # -lm -> we have to link the math library...
     clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o main_x64 $srcDir/main.cpp \
-    `sdl2-config --static-libs`
+    `sdl2-config --static-libs` -pg
 elif [ "$OS_NAME" == "Android" ] || \
      [ "$OS_NAME" == "android" ]; then
     # TODO(dgl): Android build not yet tested!

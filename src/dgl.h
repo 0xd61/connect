@@ -167,6 +167,7 @@ local_inline uint32
 dgl_round_real32_to_uint32(real32 value)
 {
     dgl_assert(value >= 0.0f, "Number must be positive");
+    // TODO(dgl): should we do the faster (uint32)value + 0.5f; ?
     uint32 result = (uint32)roundf(value);
     return(result);
 }

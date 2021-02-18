@@ -1,173 +1,3 @@
-#include "zhc_platform.h"
-
-#define STB_TRUETYPE_IMPLEMENTATION  // force following include to generate implementation
-#define STBTT_STATIC
-#define STBTT_assert(x) assert(x, "stb assert")
-
-// NOTE(dgl): Disable compiler warnings for stb includes
-#if defined(__clang__)
-#pragma clang diagnostic push
-#if __clang_major__ > 7
-#pragma clang diagnostic ignored "-Wimplicit-int-float-conversion"
-#endif
-#pragma clang diagnostic ignored "-Wsign-conversion"
-#pragma clang diagnostic ignored "-Wfloat-conversion"
-
-#include "lib/stb_truetype.h"
-
-#pragma clang diagnostic pop
-#endif
-
-// TODO(dgl): not tested
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning (disable: 4127)             // condition expression is constant
-#pragma warning (disable: 4996)             // 'This function or variable may be unsafe': strcpy, strdup, sprintf, vsnprintf, sscanf, fopen
-#if defined(_MSC_VER) && _MSC_VER >= 1922   // MSVC 2019 16.2 or later
-#pragma warning (disable: 5054)             // operator '|': deprecated between enumerations of different types
-#endif
-
-#include "stb_truetype.h"
-
-#pragma warning(pop)
-#endif
-
-typedef struct Image
-{
-    uint32 *pixels;
-    int32 width;
-    int32 height;
-} Image;
-
-struct Font
-{
-    uint8 *ttf_buffer;
-    Image *bitmap;
-    real32 size;
-    real32 linegap;
-    real32 height;
-    stbtt_fontinfo stbfont;
-    // NOTE(dgl): we only encode ASCII + Latin-1 (first 256 code points)
-    // if we need more, use glyphsets with each 256 characters to reduce
-    // the amount of memory needed.
-    stbtt_bakedchar glyphs[256];
-};
-
-struct Render
-{
-    Zhc_Platform_Api api;
-    Zhc_Offscreen_Buffer *draw_buffer;
-
-    DGL_Mem_Arena arena;
-    V4 clip;
-    Font *font;
-
-    bool32 is_initialized;
-};
-
-internal void
-set_clip(Render *r, V4 rect)
-{
-    r->clip.left = rect.x;
-    r->clip.top = rect.y;
-    r->clip.right = rect.x + rect.w;
-    r->clip.bottom = rect.y + rect.h;
-}
-
-internal Render *
-get_renderer(Zhc_Memory *memory)
-{
-    assert(sizeof(Render) < memory->render_storage_size, "Not enough memory allocated");
-    Render *result = cast(Render *)memory->render_storage;
-    return(result);
-}
-
-internal Font *
-initialize_font(DGL_Mem_Arena *arena, uint8 *ttf_buffer, real32 font_size)
-{
-    Font *result = dgl_mem_arena_push_struct(arena, Font);
-    result->ttf_buffer = ttf_buffer;
-
-    // init stbfont
-    assert(stbtt_InitFont(&result->stbfont, result->ttf_buffer, stbtt_GetFontOffsetForIndex(result->ttf_buffer,0)), "Failed to load font");
-
-    // get height and scale
-    int32 ascent, descent, linegap;
-    stbtt_GetFontVMetrics(&result->stbfont, &ascent, &descent, &linegap);
-    result->size = font_size;
-    real32 scale = stbtt_ScaleForPixelHeight(&result->stbfont, result->size);
-    // NOTE(dgl): linegap is defined by the font. However it was 0 in the fonts I
-    // have tested.
-    result->linegap = 1.2f; //cast(real32)linegap;
-    result->height = cast(real32)(ascent - descent) * scale;
-
-    // build bitmap
-    Image *bitmap = dgl_mem_arena_push_struct(arena, Image);
-    bitmap->width = 128;
-    bitmap->height = 128;
-    int32 pixel_count = bitmap->width*bitmap->height;
-    bitmap->pixels = dgl_mem_arena_push_array(arena, uint32, cast(usize)pixel_count);
-    real32 s = stbtt_ScaleForMappingEmToPixels(&result->stbfont, 1) / stbtt_ScaleForPixelHeight(&result->stbfont, 1);
-
-retry:
-    /* load glyphs */
-    int32 success = stbtt_BakeFontBitmap(result->ttf_buffer, 0, result->size*s,
-                                         cast(uint8 *)bitmap->pixels, bitmap->width, bitmap->height,
-                                         0, array_count(result->glyphs), result->glyphs);
-
-    if(success < 0)
-    {
-        LOG_DEBUG("Could not fit the characters into the bitmap (%dx%d). Retrying...", bitmap->width, bitmap->height);
-        bitmap->width *= 2;
-        bitmap->height *= 2;
-        bitmap->pixels = dgl_mem_arena_resize_array(arena, uint32, bitmap->pixels, cast(usize)pixel_count, cast(usize)(bitmap->width*bitmap->height));
-        pixel_count = bitmap->width*bitmap->height;
-        goto retry;
-    }
-
-    // map 8bit Bitmap to 32bit
-    for(int32 index = pixel_count - 1;
-        index >= 0;
-        --index)
-    {
-        // NOTE(dgl): we only store the alpha channel.
-        // the others are set on drawing.
-        uint8 alpha = *(cast(uint8 *)bitmap->pixels + index);
-        bitmap->pixels[index] = (cast(uint32)(alpha << 24) |
-                                             (0xFF << 16) |
-                                             (0xFF << 8) |
-                                             (0xFF << 0));
-    }
-    result->bitmap = bitmap;
-
-    // make tab and newline glyphs invisible
-    result->glyphs[cast(int32)'\t'].x1 = result->glyphs[cast(int32)'\t'].x0;
-    result->glyphs[cast(int32)'\n'].x1 = result->glyphs[cast(int32)'\n'].x0;
-
-    return(result);
-}
-
-void
-zhc_render_init(Zhc_Memory *memory, Zhc_Offscreen_Buffer *buffer)
-{
-    Render *r = get_renderer(memory);
-    r->api = memory->api;
-    r->draw_buffer = buffer;
-    set_clip(r, rect(0,0,buffer->width, buffer->height));
-    dgl_mem_arena_init(&r->arena, (uint8 *)memory->render_storage + sizeof(*r), (DGL_Mem_Index)memory->render_storage_size - sizeof(*r));
-
-    // TODO(dgl): make this call relative.
-    // load dependent of executable path
-    char *path = "./data/Inter-Regular.ttf";
-    usize file_size = r->api.file_size(path);
-    uint8 *ttf_buffer = dgl_mem_arena_push_array(&r->arena, uint8, file_size);
-    bool32 success = r->api.read_entire_file(path, ttf_buffer, file_size);
-    assert(success, "Could not initialize default font");
-    r->font = initialize_font(&r->arena, ttf_buffer, 21.0f);
-
-    r->is_initialized = true;
-}
-
 inline uint32
 blend_pixel(uint32 src, uint32 dest, V4 color_)
 {
@@ -191,15 +21,15 @@ blend_pixel(uint32 src, uint32 dest, V4 color_)
     real32 B = (1.0f-A)*DB + (A*SB*color_.b);
 
     // TODO(dgl): checkout premultiplied alpha
-    result = ((dgl_round_real32_to_uint32(R) << 16) |
-             (dgl_round_real32_to_uint32(G) << 8)  |
-             (dgl_round_real32_to_uint32(B) << 0));
+    result = (((uint32)(R + 0.5f) << 16) |
+             ((uint32)(G + 0.5f) << 8)  |
+             ((uint32)(B + 0.5f) << 0));
 
     return(result);
 }
 
 internal void
-draw_rectangle(Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
+ren_draw_rectangle(Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
 {
     int32 min_x = rect.x;
     int32 min_y = rect.y;
@@ -235,7 +65,7 @@ draw_rectangle(Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
 }
 
 internal void
-draw_image(Zhc_Offscreen_Buffer *buffer, Image *image, V4 rect, V2 pos, V4 color)
+ren_draw_bitmap(Zhc_Offscreen_Buffer *buffer, Zhc_Image *image, V4 rect, V2 pos, V4 color)
 {
     // TODO(dgl): Something is not right. An image 100x100 is drawm only about 1/3.
 
@@ -292,61 +122,7 @@ draw_image(Zhc_Offscreen_Buffer *buffer, Image *image, V4 rect, V2 pos, V4 color
     }
 }
 
-internal int32
-utf8_to_codepoint(char *c, uint32 *dest)
-{
-    int32 byte_count;
-    uint32 codepoint;
-
-    // NOTE(dgl): The first most significant 4 bits determine if the character
-    // is encoded with 1, 2, 3 or 4 bytes.
-    switch (*c & 0xf0)
-    {
-        // Byte 1     Byte 2     Byte 3     Byte 4
-        // 1111 0xxx  10xx xxxx  10xx xxxx  10xx xxxx
-        case 0xf0:
-        {
-            // we only want the 3 lsb of the first byte
-            codepoint = cast(uint32)(*c & 0x07);
-            byte_count = 4;
-        } break;
-        // Byte 1     Byte 2     Byte 3
-        // 1110 xxxx  10xx xxxx  10xx xxxx
-        case 0xe0:
-        {
-            // we only want the 4 lsb of the first byte
-            codepoint = cast(uint32)(*c & 0x0f);
-            byte_count = 3;
-        } break;
-        // Byte 1     Byte 2
-        // 110x xxxx  10xx xxxx
-        case 0xd0:
-        case 0xc0:
-        {
-            // we only want the 5 lsb of the first byte
-            codepoint = cast(uint32)(*c & 0x1f);
-            byte_count = 2;
-        } break;
-        // Byte 1
-        // 0xxx xxxx
-        default:
-        {
-            codepoint = cast(uint32)(*c);
-            byte_count = 1;
-        } break;
-    }
-
-    int32 i = 0;
-    while(++i < byte_count)
-    {
-        // NOTE(dgl): For the other bytes (2-4) we only want the 6 lsb.
-        codepoint = (codepoint << 6) | (*(++c) & 0x3f);
-    }
-
-    *dest = codepoint;
-    return(byte_count);
-}
-
+#if 0
 // NOTE(dgl): ignores newline characters.
 internal void
 draw_text(Zhc_Offscreen_Buffer *buffer, Font *font, char *text, int32 byte_count, V2 pos, V4 color_)
@@ -365,7 +141,7 @@ draw_text(Zhc_Offscreen_Buffer *buffer, Font *font, char *text, int32 byte_count
         curr_char += utf8_to_codepoint(curr_char, &codepoint);
         stbtt_bakedchar *glyph = font->glyphs + codepoint;
 
-        draw_image(buffer,
+        draw_bitmap(buffer,
                    font->bitmap,
                    rect(glyph->x0, glyph->y0, glyph->x1 - glyph->x0, glyph->y1 - glyph->y0),
                    v2(x + dgl_round_real32_to_int32(glyph->xoff), pos.y + dgl_round_real32_to_int32(glyph->yoff)), color_);
@@ -373,88 +149,4 @@ draw_text(Zhc_Offscreen_Buffer *buffer, Font *font, char *text, int32 byte_count
         x += dgl_round_real32_to_int32(glyph->xadvance);
     }
 }
-
-internal int32
-get_font_width(Font *font, char *text, int32 byte_count)
-{
-    char *c = text;
-    int32 result = 0;
-    uint32 codepoint = 0;
-    while(*c && (byte_count-- > 0))
-    {
-        c += utf8_to_codepoint(c, &codepoint);
-        stbtt_bakedchar *glyph = font->glyphs + codepoint;
-        result += dgl_round_real32_to_int32(glyph->xadvance);
-    }
-
-    return(result);
-}
-
-// NOTE(dgl): target is a string to support utf8 sequences
-internal int32
-next_word_byte_count(char *text)
-{
-    int32 result = 0;
-    char *c = text;
-    while(*c)
-    {
-        if((*c == ' ') || (*c == '\n') ||
-           (*c == ';') || (*c == '-'))
-        {
-            break;
-        }
-        c++; result++;
-    }
-
-    return(result);
-}
-
-
-void
-zhc_render_rect(Zhc_Memory *memory, V4 rect, V4 color)
-{
-    Render *r = get_renderer(memory);
-    assert(r->is_initialized, "Render struct must be initialized");
-    draw_rectangle(r->draw_buffer, rect, color);
-}
-
-void
-zhc_render_text(Zhc_Memory *memory, V4 rect, V4 color, char *text)
-{
-    Render *r = get_renderer(memory);
-    assert(r->is_initialized, "Render struct must be initialized");
-
-    char *c = text;
-    int32 y = rect.y + dgl_round_real32_to_int32(r->font->height);
-    int32 x = rect.x;
-    int32 max_x = rect.x + rect.w;
-
-    while(*c)
-    {
-        // NOTE(dgl): we add 1 to have the divider also rendered at the end of the word.
-        // After drawing we check if the divider was a newline. If it was, we increase
-        // y by one line. THe divier characters are all in ACII, hence only 1 byte long.
-        int32 word_byte_count = next_word_byte_count(c) + 1;
-        int32 word_width = get_font_width(r->font, c, word_byte_count);
-
-        if((x + word_width) > max_x)
-        {
-            y += dgl_round_real32_to_int32(r->font->height + r->font->linegap);
-            x = rect.x;
-        }
-
-        draw_text(r->draw_buffer, r->font, c, word_byte_count, v2(x, y), color);
-
-
-        c += word_byte_count;
-        if(*(c - 1) == '\n')
-        {
-            y += dgl_round_real32_to_int32(r->font->height + r->font->linegap);
-            x = rect.x;
-        }
-        else
-        {
-            x += word_width;
-        }
-    }
-}
+#endif
