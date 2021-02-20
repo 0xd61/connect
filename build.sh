@@ -38,10 +38,13 @@ pushd $buildDir > /dev/null
 if [ "$OS_NAME" == "GNU/Linux" ] || \
    [ "$OS_NAME" == "Linux" ] || \
    [ "$OS_NAME" == "linux" ]; then
+    mkdir -p linux
     # PIC = Position Independent Code
     # -lm -> we have to link the math library...
-    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o main_x64 $srcDir/main.cpp \
+    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/main_x64 $srcDir/main.cpp \
     `sdl2-config --static-libs` -pg
+
+    cp -r $dataDir/assets/* linux/
 elif [ "$OS_NAME" == "Android" ] || \
      [ "$OS_NAME" == "android" ]; then
     # TODO(dgl): Android build not yet tested!

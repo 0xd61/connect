@@ -6,6 +6,7 @@ MKSOURCES=""
 SCRIPT=$(readlink -f "$0")
 CURDIR=$(dirname "$SCRIPT")
 SOURCE_FOLDER="$CURDIR/src"
+DATA_FOLDER="$CURDIR/data"
 
 echo $CURDIR
 
@@ -78,6 +79,7 @@ fi
 
 cp -r $SDLPATH/Android.mk $BUILDPATH/app/jni/SDL
 sed -i -e "s|YourSourceHere.c|$MKSOURCES|g" $BUILDPATH/app/jni/src/Android.mk
+echo "LOCAL_EXPORT_CFLAGS := -DZHC_DEBUG=1 -DZHC_INTERNAL=1" >> $BUILDPATH/app/jni/src/Android.mk
 sed -i -e "s|org\.libsdl\.app|$APP|g" $BUILDPATH/app/build.gradle
 sed -i -e "s|org\.libsdl\.app|$APP|g" $BUILDPATH/app/src/main/AndroidManifest.xml
 
@@ -90,7 +92,12 @@ if [ -z "$COPYSOURCE" ]; then
     ln -s $SOURCE_FOLDER/* $BUILDPATH/app/jni/src
 else
     cp -r $SOURCE_FOLDER/* $BUILDPATH/app/jni/src
+
 fi
+
+# Copy Assets
+mkdir -p $BUILDPATH/app/src/main/assets
+cp -r $DATA_FOLDER/assets/* $BUILDPATH/app/src/main/assets/
 
 # Create an inherited Activity
 cd $BUILDPATH/app/src/main/java

@@ -22,17 +22,25 @@ ZHC_FILE_SIZE(sdl_file_size)
 {
     usize result = 0;
     SDL_RWops *io = SDL_RWFromFile(filename, "rb");
-    int64 size = SDL_RWsize(io);
-    assert(size > 0, "Failed to find file");
-    result = cast(usize)size;
-    SDL_RWclose(io);
+    if(io != 0)
+    {
+        int64 size = SDL_RWsize(io);
+        assert(size > 0, "Failed to find file");
+        result = cast(usize)size;
+        SDL_RWclose(io);
+    }
+    else
+    {
+        LOG_DEBUG("SDL_RWFromFile failed for %s with error: %s", filename, SDL_GetError());
+    }
     return(result);
 }
 
 internal Zhc_File_Info *
-allocate_file_info(Zhc_File_Group *group, char *filename, usize filename_size)
+allocate_file_info(Zhc_File_Group *group, char *filename)
 {
     Zhc_File_Info *result = dgl_mem_arena_push_struct(group->arena, Zhc_File_Info);
+    usize filename_size = dgl_string_length(filename);
     result->next = group->first_file_info;
     result->filename = dgl_mem_arena_push_array(group->arena, char, filename_size + 1);
 
@@ -52,10 +60,9 @@ ZHC_GET_DIRECTORY_FILENAMES(get_directory_filenames)
     {
         result = dgl_mem_arena_push_struct(arena, Zhc_File_Group);
         result->arena = arena;
-        usize dirpath_count = string_length(path);
+        usize dirpath_count = dgl_string_length(path);
         result->dirpath = dgl_mem_arena_push_array(arena, char, dirpath_count + 1);
         dgl_memcpy(result->dirpath, path, dirpath_count);
-
         result->dirpath[dirpath_count] = '\0';
 
         struct dirent *entry;
@@ -68,33 +75,74 @@ ZHC_GET_DIRECTORY_FILENAMES(get_directory_filenames)
                entry->d_name[1] == '.' &&
                entry->d_name[2] == '\0'){ continue; }
 
-            usize name_count = string_length(entry->d_name);
-            Zhc_File_Info *info = allocate_file_info(result, entry->d_name, name_count);
+            Zhc_File_Info *info = allocate_file_info(result, entry->d_name);
+
             DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(result->arena);
 
-            char *separator = "";
+            DGL_String_Builder tmp_builder = dgl_string_builder_init(temp.arena, 128);
 #ifdef _WIN32
-            if(path[dirpath_count-1] != '\\') { separator = "\\"; }
+            dgl_string_append(&tmp_builder, "%s\\%s", result->dirpath, info->filename);
 #else
-            if(path[dirpath_count-1] != '/') { separator = "/"; }
+            dgl_string_append(&tmp_builder, "%s/%s", result->dirpath, info->filename);
 #endif
+            char *tmp_filepath = dgl_string_c_style(&tmp_builder);
+            info->size = sdl_file_size(tmp_filepath);
 
-            usize separator_count = string_length(separator);
-            usize filepath_count = dirpath_count + separator_count + name_count;
-            char *filepath = dgl_mem_arena_push_array(temp.arena, char, filepath_count + 1);
-
-            // TODO(dgl): better filepath appending.
-            void *dest = filepath;
-            dgl_memcpy(dest, path, dirpath_count);
-            dest = (char *)dest + dirpath_count;
-            dgl_memcpy(dest, separator, separator_count);
-            dest = (char *)dest + separator_count;
-            dgl_memcpy(dest, info->filename, name_count);
-            filepath[filepath_count] = '\0';
-
-            info->size = sdl_file_size(filepath);
             dgl_mem_arena_end_temp(temp);
         }
+    }
+    return(result);
+}
+
+ZHC_GET_DATA_BASE_PATH(sdl_internal_storage_path)
+{
+    bool32 result = false;
+#if __ANDROID__
+    // NOTE(dgl): On android the asset path is the execution path. Therefore we do nothing.
+    // If we put something like . or ./ android does not find the asset folders.
+    result = true;
+#else
+    char *path = SDL_GetBasePath();
+    if(path)
+    {
+        result = true;
+#ifdef _WIN32
+        dgl_string_append(builder, "%s\\", path);
+#else
+        dgl_string_append(builder, "%s/", path);
+#endif
+        SDL_free(path);
+    }
+    else
+    {
+        LOG_DEBUG("SDL Get Path failed: %s", SDL_GetError());
+    }
+#endif
+
+    return(result);
+}
+
+ZHC_GET_USER_DATA_BASE_PATH(sdl_external_storage_path)
+{
+    bool32 result = false;
+    #if __ANDROID__
+        const char *path = SDL_AndroidGetExternalStoragePath();
+    #else
+        // NOTE(dgl): we could also use the $HOME or %userprofile% variable
+        // but I think, this is currently the best option.
+        char *path = SDL_GetPrefPath("co.degit.connect", "Connect");
+    #endif
+    if(path)
+    {
+        result = true;
+#ifdef _WIN32
+        dgl_string_append(builder, "%s\\", path);
+#else
+        dgl_string_append(builder, "%s/", path);
+#endif
+#if !__ANDROID__
+        SDL_free(path);
+#endif
     }
 
     return(result);
@@ -111,8 +159,12 @@ ZHC_READ_ENTIRE_FILE(sdl_read_entire_file)
         LOG_DEBUG("Reading file %s (%d bytes) into buffer %p (%d bytes)", filename, read, buffer, buffer_size);
         assert(read >= buffer_size, "Could not read entire file");
         result = true;
+        SDL_RWclose(io);
     }
-    SDL_RWclose(io);
+    else
+    {
+        LOG_DEBUG("SDL_RWFromFile failed for %s with error: %s", filename, SDL_GetError());
+    }
 
     return(result);
 }
@@ -168,6 +220,8 @@ int main(int argc, char *argv[])
         memory.api.read_entire_file = sdl_read_entire_file;
         memory.api.file_size = sdl_file_size;
         memory.api.get_directory_filenames = get_directory_filenames;
+        memory.api.get_data_base_path = sdl_internal_storage_path;
+        memory.api.get_user_data_base_path = sdl_external_storage_path;
 
         Zhc_Offscreen_Buffer back_buffer = {};
         Zhc_Input input = {};

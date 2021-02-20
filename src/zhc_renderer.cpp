@@ -31,17 +31,20 @@ blend_pixel(uint32 src, uint32 dest, V4 color_)
 internal void
 ren_draw_rectangle(Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
 {
-    int32 min_x = rect.x;
-    int32 min_y = rect.y;
-    int32 max_x = rect.x + rect.w;
-    int32 max_y = rect.y + rect.h;
-    //LOG_DEBUG("Drawing rectangle: min X: %d, min Y: %d, max X: %d, max Y: %d", min_x, min_y, max_x, max_y);
+    // TODO(dgl): check clamping.
+    int32 min_x = dgl_max(0, rect.x);
+    int32 min_y = dgl_max(0, rect.y);
+    int32 max_x = dgl_min(rect.x + rect.w, buffer->width);
+    int32 max_y = dgl_min(rect.y + rect.h, buffer->height);
 
+    LOG_DEBUG("Buffer W: %d H: %d", buffer->width, buffer->height);
+    LOG_DEBUG("Drawing rectangle: min X: %d, min Y: %d, max X: %d, max Y: %d", min_x, min_y, max_x, max_y);
 
-    min_x = dgl_clamp(min_x, 0, min_x);
-    min_y = dgl_clamp(min_y, 0, min_y);
-    max_x = dgl_clamp(max_x, max_x, buffer->width);
-    max_y = dgl_clamp(max_y, max_y, buffer->height);
+    // TODO(dgl): do we have to check if min_x < max_y etc.?
+    min_x = dgl_clamp(min_x, 0, max_x);
+    min_y = dgl_clamp(min_y, 0, max_y);
+    max_x = dgl_clamp(max_x, min_x, buffer->width);
+    max_y = dgl_clamp(max_y, min_y, buffer->height);
 
     uint8 *row = (cast(uint8 *)buffer->memory +
                   min_y*buffer->pitch +

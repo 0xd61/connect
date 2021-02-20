@@ -46,3 +46,11 @@ platform-tools                          | 30.0.5       | Android SDK Platform-To
 platforms;android-26                    | 2            | Android SDK Platform 26         | platforms/android-26/
 system-images;android-26;default;x86_64 | 1            | Intel x86 Atom_64 System Image  | system-images/android-26/default/x86_64/
   ```
+
+  ## Android Debugging
+
+  The logmessages on android are tagged with co.degit.connect. You can view them via `adb logcat` with the following command:
+
+  ```
+  adb logcat -v color co.degit.connect:V *:E
+  ```

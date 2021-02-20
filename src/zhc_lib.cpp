@@ -1,3 +1,12 @@
+/*
+    NOTE(dgl): TODOs
+    - Socket for accepting clients
+    - send data to clients
+    - dynamic folder (where we search for the files) + folder dialog
+    - config file
+    - segfault if window too small
+*/
+
 #include "zhc_platform.h"
 
 #define STB_TRUETYPE_IMPLEMENTATION  // force following include to generate implementation
@@ -141,16 +150,19 @@ get_file_info(Zhc_File_Group *group, int32 index)
 {
     Zhc_File_Info *result = 0;
     assert(group, "Group must be initialized");
-    assert(index < group->count && index >= 0, "Index exceeds files in group");
-
-    int32 depth = group->count - index;
-    Zhc_File_Info *info = group->first_file_info;
-    while(--depth > 0)
+    if(group->count > 0)
     {
-        info = info->next;
-    }
+        assert(index < group->count && index >= 0, "Index exceeds files in group");
 
-    result = info;
+        int32 depth = group->count - index;
+        Zhc_File_Info *info = group->first_file_info;
+        while(--depth > 0)
+        {
+            info = info->next;
+        }
+
+        result = info;
+    }
     return(result);
 }
 
@@ -276,7 +288,9 @@ initialize_font(DGL_Mem_Arena *arena, uint8 *ttf_buffer, real32 font_size)
     result->ttf_buffer = ttf_buffer;
 
     // init stbfont
-    assert(stbtt_InitFont(&result->stbfont, result->ttf_buffer, stbtt_GetFontOffsetForIndex(result->ttf_buffer,0)), "Failed to load font");
+    int32 init_success = stbtt_InitFont(&result->stbfont, result->ttf_buffer, stbtt_GetFontOffsetForIndex(result->ttf_buffer,0));
+    assert(init_success, "Failed to load font");
+    LOG_DEBUG("Font - ttf_buffer: %p, data: %p, user_data: %p, font_start: %d, hhea: %d", result->ttf_buffer, result->stbfont.data, result->stbfont.userdata, result->stbfont.fontstart, result->stbfont.hhea);
 
     // get height and scale
     int32 ascent, descent, linegap;
@@ -481,7 +495,7 @@ ui_button(Imui_Context *ctx, V4 body, V4 prim_color, V4 hover_color, Font *font,
 {
     V4 label_color = ctx->fg_color;
     bool32 result = false;
-    usize label_count = string_length(label);
+    usize label_count = dgl_string_length(label);
 
     Element_ID id;
     if(label_count > 0)
@@ -569,20 +583,26 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
     {
         LOG_DEBUG("Lib_State size: %lld, Available memory: %lld", sizeof(*state), memory->storage_size);
         dgl_mem_arena_init(&state->permanent_arena, (uint8 *)memory->storage + sizeof(*state), ((DGL_Mem_Index)memory->storage_size - sizeof(*state)));
-
+        // TODO(dgl): create transient storage and put the initializing stuff there instead of a temp arena.
 
         // NOTE(dgl): Initializing UI Context
         Imui_Context *ui_ctx = dgl_mem_arena_push_struct(&state->permanent_arena, Imui_Context);
         ui_ctx->id_stack.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
         ui_ctx->id_stack.memory = dgl_mem_arena_push_array(&state->permanent_arena, Element_ID, ui_ctx->id_stack.count);
 
-        // TODO(dgl): make this call relative.
-        // load dependent of executable path
-        char *path = "./data/Inter-Regular.ttf";
+        // TODO(dgl): dgl stringbuilder add temp append and forbid resizing via flags
+        DGL_String_Builder data_base_path_builder = dgl_string_builder_init(&state->permanent_arena, 512);
+        bool32 base_path_success = platform.get_data_base_path(&data_base_path_builder);
+        assert(base_path_success, "Could not load system path");
+        dgl_string_append(&data_base_path_builder, "fonts/Inter-Regular.ttf");
+
+        char *path = dgl_string_c_style(&data_base_path_builder);
         usize file_size = platform.file_size(path);
         uint8 *ttf_buffer = dgl_mem_arena_push_array(&state->permanent_arena, uint8, file_size);
-        bool32 success = platform.read_entire_file(path, ttf_buffer, file_size);
-        assert(success, "Could not initialize default font");
+        bool32 file_success = platform.read_entire_file(path, ttf_buffer, file_size);
+        assert(file_success, "Could not load default font");
+
+        LOG_DEBUG("Initializing font with buffer %p, size: %d", ttf_buffer, file_size);
         ui_ctx->system_font = initialize_font(&state->permanent_arena, ttf_buffer, 21.0f);
 
         usize font_arena_size = megabytes(8);
@@ -590,7 +610,7 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
         dgl_mem_arena_init(&ui_ctx->dyn_font_arena, font_arena_base, font_arena_size);
 
         // TODO(dgl): load from config
-        ui_ctx->desired_text_font_size = 12.0f;
+        ui_ctx->desired_text_font_size = 18.0f;
         ui_ctx->text_font = initialize_font(&ui_ctx->dyn_font_arena, ttf_buffer, ui_ctx->desired_text_font_size);
         ui_ctx->fg_color = color(0.0f, 0.0f, 0.0f, 1.0f);
         ui_ctx->bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
@@ -598,26 +618,37 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
         state->ui_ctx = ui_ctx;
 
         // NOTE(dgl): Initialize IO Context
+        // The io_arena must be initialized before beginnging the temp arena. Otherwise the allocation
+        // is automatically freed on the end of the temp arena.
         usize io_arena_size = megabytes(8);
         uint8 *io_arena_base = dgl_mem_arena_push_array(&state->permanent_arena, uint8, io_arena_size);
         dgl_mem_arena_init(&state->io_arena, io_arena_base, io_arena_size);
         state->io_update_timeout = 0.0f;
 
-        // TODO(dgl): load from config and let user update this
-        char *target_dir = "./data/files";
+        // TODO(dgl): let user set this folder and store in config
+        DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(&state->permanent_arena);
+        DGL_String_Builder temp_builder = dgl_string_builder_init(temp.arena, 128);
 
-        if(target_dir)
+        if(platform.get_user_data_base_path(&temp_builder))
         {
-            Zhc_File_Group *group = platform.get_directory_filenames(&state->io_arena, target_dir);
+            char *temp_target = dgl_string_c_style(&temp_builder);
+            Zhc_File_Group *group = platform.get_directory_filenames(&state->io_arena, temp_target);
+
+            // TODO(dgl): order filegroup by filename. Maybe order on list creation.
 
             if(group)
             {
                 state->files = group;
 
                 Zhc_File_Info *info = get_file_info(group, 0);
-                state->active_file = read_active_file(&state->io_arena, group, info);
+                if(info)
+                {
+                    state->active_file = read_active_file(&state->io_arena, group, info);
+                }
             }
         }
+
+        dgl_mem_arena_end_temp(temp);
         state->is_initialized = true;
     }
 
@@ -671,6 +702,7 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
         }
     }
 
+    // NOTE(dgl): Reload the directory/file info and file every 10 seconds.
     state->io_update_timeout += input->last_frame_in_ms;
     if(state->io_update_timeout > 10000.0f && state->files->count > 0)
     {
@@ -678,9 +710,9 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
 
         // NOTE(dgl): copy current infos to have them available after
         // puring the io arena. // TODO(dgl): Is there a better way?
-        usize dirpath_count = string_length(state->files->dirpath) + 1;
-        char *dirpath = dgl_mem_arena_push_array(temp.arena, char, dirpath_count);
-        dgl_memcpy(dirpath, state->files->dirpath, dirpath_count);
+        DGL_String_Builder tmp_builder = dgl_string_builder_init(temp.arena, 128);
+        dgl_string_append(&tmp_builder, "%s", state->files->dirpath);
+        char *tmp_dir_path = dgl_string_c_style(&tmp_builder);
 
         // NOTE(dgl): resetting pointer to make sure, we do not point to something invalid
         state->active_file = {};
@@ -689,12 +721,17 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
 
         state->io_update_timeout = 0.0f;
 
-        Zhc_File_Group *group = platform.get_directory_filenames(&state->io_arena, dirpath);
+        Zhc_File_Group *group = platform.get_directory_filenames(&state->io_arena, tmp_dir_path);
         if(group)
         {
             state->files = group;
             Zhc_File_Info *info = get_file_info(state->files, state->ui_ctx->desired_file_id);
-            state->active_file = read_active_file(&state->io_arena, state->files, info);
+            // NOTE(dgl): we resetted the file earlier. Therefore we do not need to reset if
+            // the file does not exist anymore.
+            if(info)
+            {
+                state->active_file = read_active_file(&state->io_arena, state->files, info);
+            }
         }
 
         dgl_mem_arena_end_temp(temp);
@@ -709,8 +746,8 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
     }
 
     // NOTE(dgl): update active file if requested
-    Zhc_File_Info *info;
-    if((info = get_file_info(state->files, state->ui_ctx->desired_file_id)) != state->active_file.info)
+    Zhc_File_Info *info = get_file_info(state->files, state->ui_ctx->desired_file_id);
+    if(info && info != state->active_file.info)
     {
         state->active_file = read_active_file(&state->io_arena, state->files, info);
     }

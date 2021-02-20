@@ -23,6 +23,11 @@ CREDITS
  Credits to Sean Barrett and his stb style libraries which inspired this library.
 */
 
+/*
+   TODOs:
+   - handle module deps if a module is disabled (e.g. memory depends on log)
+*/
+
 #ifdef DGL_STATIC
 #define DGL_DEF static
 #else
@@ -335,6 +340,44 @@ DGL_DEF void * dgl__mem_pool_alloc_threadsafe_internal(DGL_Mem_Pool *arena);
 DGL_DEF void dgl__mem_pool_free_threadsafe_internal(DGL_Mem_Pool *arena, void *ptr);
 
 #endif // DGL_NO_MEMORY
+
+//
+// String
+//
+
+#ifndef DGL_NO_STRING
+
+#include <stdarg.h>
+
+typedef struct DGL_String_Builder
+{
+    DGL_Mem_Arena *arena;
+    usize capacity;
+    usize count;
+    union
+    {
+       uint8 *data;
+       char *string;
+    };
+} DGL_String_Builder;
+
+DGL_DEF inline usize
+dgl_string_length(char *string)
+{
+    usize count = 0;
+    if(string)
+    {
+        while(*string++) { ++count; }
+    }
+    return(count);
+}
+
+DGL_DEF DGL_String_Builder dgl_string_builder_init(DGL_Mem_Arena *arena, usize capacity);
+#define dgl_string_append(builder, fmt, ...) dgl__string_append_internal(builder, fmt, ## __VA_ARGS__)
+DGL_DEF void dgl__string_append_internal(DGL_String_Builder *builder, char *fmt, ...);
+DGL_DEF char * dgl_string_c_style(DGL_String_Builder *builder);
+
+#endif // DGL_NO_STRING
 
 #ifdef __cplusplus
 }
@@ -682,5 +725,66 @@ dgl__mem_pool_free_threadsafe_internal(DGL_Mem_Pool *arena, void *ptr)
 }
 
 #endif // DGL_NO_MEMORY
+
+//
+//  String
+//
+
+#ifndef DGL_NO_STRING
+
+DGL_DEF DGL_String_Builder
+dgl_string_builder_init(DGL_Mem_Arena *arena, usize capacity)
+{
+    DGL_String_Builder result = {};
+    result.arena = arena;
+    result.data = dgl_mem_arena_push_array(arena, uint8, capacity);
+    result.count = 0;
+    result.capacity = capacity;
+
+    return(result);
+}
+
+DGL_DEF void
+dgl__string_append_internal(DGL_String_Builder *builder, char *fmt, ...)
+{
+    DGL_Mem_Arena *a = builder->arena;
+    va_list ap;
+retry:
+    va_start(ap, fmt);
+    int32 size = vsnprintf(dgl_cast(char *)(builder->data + builder->count), builder->capacity - builder->count, fmt, ap);
+    if(size < 0)
+    {
+        DGL_LOG("Failed to append string to %p", builder->data);
+    }
+    else
+    {
+        usize required_cap = builder->count + dgl_cast(usize)size;
+        if(builder->capacity <= required_cap)
+        {
+            usize new_capacity = builder->capacity;
+            while(new_capacity <= required_cap)
+            {
+                new_capacity *= 2;
+            }
+            // NOTE(dgl): If the current buffer size is too small,
+            // we resize the buffer with double the size.
+
+            builder->data = dgl_cast(uint8 *)dgl_mem_arena_resize(a, builder->data, builder->capacity, new_capacity);
+            builder->capacity = new_capacity;
+            goto retry;
+        }
+        builder->count += dgl_cast(usize)size;
+        builder->data[builder->count] = '\0';
+    }
+}
+
+DGL_DEF char *
+dgl_string_c_style(DGL_String_Builder *builder)
+{
+   char *result = builder->string;
+   return(result);
+}
+
+#endif // DGL_NO_STRING
 
 #endif // DGL_IMPLEMENTATION

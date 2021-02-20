@@ -6,8 +6,15 @@
 #include "dgl.h"
 #define assert(cond, msg) dgl_assert(cond, msg)
 #define cast(type) dgl_cast(type)
+
+#if __ANDROID__
+#include <android/log.h>
+#define LOG(...) __android_log_print(ANDROID_LOG_INFO, "co.degit.connect", __VA_ARGS__);
+#define LOG_DEBUG(...) __android_log_print(ANDROID_LOG_DEBUG, "co.degit.connect", __VA_ARGS__);
+#else
 #define LOG(...) DGL_LOG(__VA_ARGS__)
 #define LOG_DEBUG(...) DGL_LOG_DEBUG(__VA_ARGS__)
+#endif
 
 struct V2
 {
@@ -157,20 +164,11 @@ zhc_input_scroll(Zhc_Input *input, V2 delta)
     input->scroll_delta.y += delta.y;
 }
 
-internal usize
-string_length(char *s)
-{
-    usize result = 0;
-    while(*s++) { ++result; }
-
-    return(result);
-}
-
 inline void
 zhc_input_text(Zhc_Input *input, char *text)
 {
-    usize len = string_length(input->text);
-    usize size = string_length(text);
+    usize len = dgl_string_length(input->text);
+    usize size = dgl_string_length(text);
 
     assert(len + size < array_count(input->text), "Text input overflow");
     char *dest = input->text + len;
@@ -193,11 +191,18 @@ typedef ZHC_GET_DIRECTORY_FILENAMES(Zhc_Get_Directory_Filenames);
 typedef ZHC_FILE_SIZE(Zhc_File_Size);
 #define ZHC_READ_ENTIRE_FILE(name) bool32 name(char *filename, uint8 *buffer, usize buffer_size)
 typedef ZHC_READ_ENTIRE_FILE(Zhc_Read_Entire_File);
+#define ZHC_GET_USER_DATA_BASE_PATH(name) bool32 name(DGL_String_Builder *builder)
+typedef ZHC_GET_USER_DATA_BASE_PATH(Zhc_Get_User_Data_Base_Path);
+#define ZHC_GET_DATA_BASE_PATH(name) bool32 name(DGL_String_Builder *builder)
+typedef ZHC_GET_DATA_BASE_PATH(Zhc_Get_Data_Base_Path);
+
 struct Zhc_Platform_Api
 {
     Zhc_Get_Directory_Filenames *get_directory_filenames;
     Zhc_File_Size *file_size;
     Zhc_Read_Entire_File *read_entire_file;
+    Zhc_Get_User_Data_Base_Path *get_user_data_base_path;
+    Zhc_Get_Data_Base_Path *get_data_base_path;
 };
 
 struct Zhc_Memory
