@@ -153,10 +153,8 @@ get_file_info(Zhc_File_Group *group, int32 index)
     if(group->count > 0)
     {
         assert(index < group->count && index >= 0, "Index exceeds files in group");
-
-        int32 depth = group->count - index;
         Zhc_File_Info *info = group->first_file_info;
-        while(--depth > 0)
+        while(index-- > 0)
         {
             info = info->next;
         }

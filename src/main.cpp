@@ -41,12 +41,43 @@ allocate_file_info(Zhc_File_Group *group, char *filename)
 {
     Zhc_File_Info *result = dgl_mem_arena_push_struct(group->arena, Zhc_File_Info);
     usize filename_size = dgl_string_length(filename);
-    result->next = group->first_file_info;
-    result->filename = dgl_mem_arena_push_array(group->arena, char, filename_size + 1);
 
+
+    // NOTE(dgl): the linked list is sorted by filename.
+    Zhc_File_Info *node = group->first_file_info;
+    Zhc_File_Info *next_node = 0;
+    while(node)
+    {
+        next_node = node->next;
+
+        if(strcmp(filename, node->filename) > 0)
+        {
+            if(!next_node || strcmp(filename, next_node->filename) < 0)
+            {
+                break;
+            }
+        }
+        node = next_node;
+        if(next_node)
+        {
+            next_node = next_node->next;
+        }
+    }
+
+    if(!node)
+    {
+        result->next = group->first_file_info;
+        group->first_file_info = result;
+    }
+    else
+    {
+        node->next = result;
+        result->next = next_node;
+    }
+
+    result->filename = dgl_mem_arena_push_array(group->arena, char, filename_size + 1);
     dgl_memcpy(result->filename, filename, filename_size);
     result->filename[filename_size] = '\0';
-    group->first_file_info = result;
     group->count++;
 
     return(result);
