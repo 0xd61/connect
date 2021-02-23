@@ -37,8 +37,10 @@ ren_draw_rectangle(Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
     int32 max_x = dgl_min(rect.x + rect.w, buffer->width);
     int32 max_y = dgl_min(rect.y + rect.h, buffer->height);
 
+#if 0
     LOG_DEBUG("Buffer W: %d H: %d", buffer->width, buffer->height);
     LOG_DEBUG("Drawing rectangle: min X: %d, min Y: %d, max X: %d, max Y: %d", min_x, min_y, max_x, max_y);
+#endif
 
     // TODO(dgl): do we have to check if min_x < max_y etc.?
     min_x = dgl_clamp(min_x, 0, max_x);
