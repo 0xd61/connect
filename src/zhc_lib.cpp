@@ -69,7 +69,7 @@ struct Font
     stbtt_bakedchar glyphs[256];
 };
 
-struct Container
+struct Element_State
 {
     Element_ID id;
     V2 content;
@@ -97,7 +97,7 @@ struct Imui_Context
     Zhc_Offscreen_Buffer *buffer;
 
     Stack(Element_ID) id_stack;
-    Stack(Container) container_stack;
+    Stack(Element_State) element_state_stack;
 
     real32 desired_text_font_size;
     int32 desired_file_id;
@@ -270,16 +270,16 @@ update_control_state(Imui_Context *ctx, Element_ID id, V4 body)
     return(result);
 }
 
-internal Container *
-get_container(Imui_Context *ctx, Element_ID id)
+internal Element_State *
+get_element_state(Imui_Context *ctx, Element_ID id)
 {
-    assert(ctx->container_stack.memory, "container_stack must be initialized");
+    assert(ctx->element_state_stack.memory, "element_state_stack must be initialized");
 
     // NOTE(dgl): if performance is an issue, do an index lookup
-    Container *result = 0;
-    for(int32 index = 0; index < ctx->container_stack.offset; ++index)
+    Element_State *result = 0;
+    for(int32 index = 0; index < ctx->element_state_stack.offset; ++index)
     {
-        Container *c = ctx->container_stack.memory + index;
+        Element_State *c = ctx->element_state_stack.memory + index;
 
         if(c->id == id)
         {
@@ -290,8 +290,8 @@ get_container(Imui_Context *ctx, Element_ID id)
 
     if(!result)
     {
-        assert(ctx->container_stack.offset < ctx->container_stack.count, "container_stack overflow.");
-        result = ctx->container_stack.memory + ctx->container_stack.offset++;
+        assert(ctx->element_state_stack.offset < ctx->element_state_stack.count, "element_state_stack overflow.");
+        result = ctx->element_state_stack.memory + ctx->element_state_stack.offset++;
         result->id = id;
     }
 
@@ -475,7 +475,7 @@ next_word_byte_count(char *text)
 
 // NOTE(dgl): width and height of the element (to calculate overflow)
 internal V2
-ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text)
+ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text, int32 text_count)
 {
     assert(font->bitmap, "Initialize font before rendering text");
     char *c = text;
@@ -483,7 +483,7 @@ ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text)
     int32 x = body.x;
     int32 y = body.y + dgl_round_real32_to_int32(font->height);
     int32 current_w = 0;
-    while(*c)
+    while((text_count > 0) && *c)
     {
         // NOTE(dgl): we add 1 to have the divider also rendered at the end of the word.
         // After drawing we check if the divider was a newline. If it was, we increase
@@ -497,11 +497,12 @@ ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text)
             current_w = 0;
             x = body.x;
         }
-
-        while((word_byte_count > 0) && *c)
+        // TODO(dgl): kinda ugly @@cleanup
+        while((text_count > 0) && (word_byte_count > 0) && *c)
         {
             int32 char_bytes = utf8_to_codepoint(c, &codepoint);
             c += char_bytes;
+            text_count -= char_bytes;
             word_byte_count -= char_bytes;
 
             if(codepoint == '\n')
@@ -523,6 +524,7 @@ ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text)
             x += advance;
         }
     }
+
     V2 result = v2(body.w, y - body.y);
     return(result);
 }
@@ -612,15 +614,17 @@ ui_menu(Imui_Context *ctx, V4 body, V4 prim_col, V4 sec_col)
 internal void
 ui_main_text(Imui_Context *ctx, File *file)
 {
-    V4 body = rect(50, 50, ctx->window.w - 2*20, ctx->window.h - 100);
+    V4 body = rect(50, 50, ctx->window.w - 100, ctx->window.h - 100);
 
-    Element_ID id = get_id(ctx, &body, sizeof(body));
-    Container *c = get_container(ctx, id);
+    // NOTE(dgl): We use a hash of the data. Then every file has it's own state
+    // and the scroll position is saved.
+    Element_ID id = get_id(ctx, file->data, file->info->size);
+    Element_State *c = get_element_state(ctx, id);
 
     begin_element(ctx, id, body);
 
     body.y -= c->scroll_pos;
-    c->content = ui_textarea(ctx, ctx->text_font, body, ctx->fg_color, (char *)file->data);
+    c->content = ui_textarea(ctx, ctx->text_font, body, ctx->fg_color, (char *)file->data, dgl_safe_size_to_int32(file->info->size));
 
     if(c->content.h > body.h)
     {
@@ -636,6 +640,10 @@ ui_main_text(Imui_Context *ctx, File *file)
         }
 
         c->scroll_pos = dgl_clamp(c->scroll_pos + scroll_delta, 0, overflow);
+    }
+    else
+    {
+        c->scroll_pos = 0;
     }
 
     end_element(ctx);
@@ -658,8 +666,8 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
         Imui_Context *ui_ctx = dgl_mem_arena_push_struct(&state->permanent_arena, Imui_Context);
         ui_ctx->id_stack.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
         ui_ctx->id_stack.memory = dgl_mem_arena_push_array(&state->permanent_arena, Element_ID, ui_ctx->id_stack.count);
-        ui_ctx->container_stack.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
-        ui_ctx->container_stack.memory = dgl_mem_arena_push_array(&state->permanent_arena, Container, ui_ctx->container_stack.count);
+        ui_ctx->element_state_stack.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
+        ui_ctx->element_state_stack.memory = dgl_mem_arena_push_array(&state->permanent_arena, Element_State, ui_ctx->element_state_stack.count);
 
         // TODO(dgl): dgl stringbuilder add temp append and forbid resizing via flags
         DGL_String_Builder data_base_path_builder = dgl_string_builder_init(&state->permanent_arena, 512);
