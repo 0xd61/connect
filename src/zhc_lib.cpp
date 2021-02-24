@@ -81,7 +81,11 @@ struct Imui_Context
     V2 window;
     Element_ID active;
     Element_ID hot;
+    // NOTE(dgl): the last hot element of the last frame
+    // as a simple way to handle toverlapping elements.
+    Element_ID top_most_hot;
     bool32 hot_updated;
+
 
     Font *system_font;
 
@@ -97,7 +101,7 @@ struct Imui_Context
     Zhc_Offscreen_Buffer *buffer;
 
     Stack(Element_ID) id_stack;
-    Stack(Element_State) element_state_stack;
+    Stack(Element_State) element_state_list;
 
     real32 desired_text_font_size;
     int32 desired_file_id;
@@ -221,20 +225,12 @@ is_focused(Imui_Context *ctx, V4 rect)
     int mouse_x = input->pos.x;
     int mouse_y = input->pos.y;
 
-    result = (mouse_x > rect.x) && (mouse_x <= rect.x + rect.w)
-          && (mouse_y > rect.y) && (mouse_y <= rect.y + rect.h);
+    result = (mouse_x > rect.x)           &&
+             (mouse_x <= rect.x + rect.w) &&
+             (mouse_y > rect.y)           &&
+             (mouse_y <= rect.y + rect.h);
 
     return(result);
-}
-
-internal void
-set_hot(Imui_Context *ctx, Element_ID id)
-{
-    ctx->hot_updated = true;
-    if(ctx->active == 0)
-    {
-        ctx->hot = id;
-    }
 }
 
 // NOTE(dgl): returns true, if id was active but is not anymore (e.g. if click happened)
@@ -242,7 +238,7 @@ internal bool32
 update_control_state(Imui_Context *ctx, Element_ID id, V4 body)
 {
 #if 0
-    LOG_DEBUG("Hot Element: %d, Active Element: %d", ctx->hot, ctx->active);
+    LOG_DEBUG("Top most hot element: %u, Hot element %u, Active element: %u", ctx->top_most_hot, ctx->hot, ctx->active);
 #endif
     bool32 result = false;
     bool32 mouse_left_down = (ctx->input->mouse_down & Zhc_Mouse_Button_Left) == Zhc_Mouse_Button_Left;
@@ -251,35 +247,44 @@ update_control_state(Imui_Context *ctx, Element_ID id, V4 body)
     {
         if(!mouse_left_down)
         {
-            result = (ctx->hot == id);
+            result = (ctx->top_most_hot == id);
             ctx->active = 0;
         }
     }
-    else if(ctx->hot == id)
+    else if(ctx->top_most_hot == id)
     {
         if(mouse_left_down)
         {
             ctx->active = id;
+
+            // NOTE(dgl): we need to set the hot element here again
+            // otherwise we have the hot id of element under this one.
+            ctx->hot = ctx->top_most_hot;
         }
     }
 
     if(is_focused(ctx, body))
     {
-        set_hot(ctx, id);
+        ctx->hot_updated = true;
+        if(ctx->active == 0)
+        {
+            ctx->hot = id;
+        }
     }
+
     return(result);
 }
 
 internal Element_State *
 get_element_state(Imui_Context *ctx, Element_ID id)
 {
-    assert(ctx->element_state_stack.memory, "element_state_stack must be initialized");
+    assert(ctx->element_state_list.memory, "element_state_list must be initialized");
 
     // NOTE(dgl): if performance is an issue, do an index lookup
     Element_State *result = 0;
-    for(int32 index = 0; index < ctx->element_state_stack.offset; ++index)
+    for(int32 index = 0; index < ctx->element_state_list.offset; ++index)
     {
-        Element_State *c = ctx->element_state_stack.memory + index;
+        Element_State *c = ctx->element_state_list.memory + index;
 
         if(c->id == id)
         {
@@ -290,8 +295,8 @@ get_element_state(Imui_Context *ctx, Element_ID id)
 
     if(!result)
     {
-        assert(ctx->element_state_stack.offset < ctx->element_state_stack.count, "element_state_stack overflow.");
-        result = ctx->element_state_stack.memory + ctx->element_state_stack.offset++;
+        assert(ctx->element_state_list.offset < ctx->element_state_list.count, "element_state_list overflow.");
+        result = ctx->element_state_list.memory + ctx->element_state_list.offset++;
         result->id = id;
     }
 
@@ -547,7 +552,7 @@ ui_button(Imui_Context *ctx, V4 body, V4 prim_color, V4 hover_color, Font *font,
     }
     result = begin_element(ctx, id, body);
 
-    if(id == ctx->hot) { ren_draw_rectangle(ctx->buffer, body, hover_color); }
+    if(id == ctx->hot || id == ctx->active) { ren_draw_rectangle(ctx->buffer, body, hover_color); }
     else { ren_draw_rectangle(ctx->buffer, body, prim_color); }
 
     if(label_count > 0)
@@ -666,8 +671,8 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
         Imui_Context *ui_ctx = dgl_mem_arena_push_struct(&state->permanent_arena, Imui_Context);
         ui_ctx->id_stack.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
         ui_ctx->id_stack.memory = dgl_mem_arena_push_array(&state->permanent_arena, Element_ID, ui_ctx->id_stack.count);
-        ui_ctx->element_state_stack.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
-        ui_ctx->element_state_stack.memory = dgl_mem_arena_push_array(&state->permanent_arena, Element_State, ui_ctx->element_state_stack.count);
+        ui_ctx->element_state_list.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
+        ui_ctx->element_state_list.memory = dgl_mem_arena_push_array(&state->permanent_arena, Element_State, ui_ctx->element_state_list.count);
 
         // TODO(dgl): dgl stringbuilder add temp append and forbid resizing via flags
         DGL_String_Builder data_base_path_builder = dgl_string_builder_init(&state->permanent_arena, 512);
@@ -752,14 +757,14 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
 
     ui_menu(ui_ctx,
             rect(ui_ctx->window.w - 300, 0, 300, 100),
-            color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.1f),
+            color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.025f),
             color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.5f));
 
     int32 button_w = 100;
     int32 button_h = 400;
     if(ui_button(ui_ctx,
                  rect(ui_ctx->window.w - button_w, (ui_ctx->window.h - button_h)/2, button_w, button_h),
-                 color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.1f),
+                 color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.025f),
                  color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.5f),
                  ui_ctx->system_font, ">"))
     {
@@ -771,7 +776,7 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
 
     if(ui_button(ui_ctx,
                  rect(0, (ui_ctx->window.h - button_h)/2, button_w, button_h),
-                 color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.1f),
+                 color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.025f),
                  color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.5f),
                  ui_ctx->system_font, "<"))
     {
@@ -830,4 +835,9 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
     {
         state->active_file = read_active_file(&state->io_arena, state->files, info);
     }
+
+    // NOTE(dgl): put this at the end of the frame
+    // to know which element is hot if they are overlapping
+    // on the next frame
+    ui_ctx->top_most_hot = ui_ctx->hot;
 }
