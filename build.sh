@@ -41,7 +41,10 @@ if [ "$OS_NAME" == "GNU/Linux" ] || \
     mkdir -p linux
     # PIC = Position Independent Code
     # -lm -> we have to link the math library...
-    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/main_x64 $srcDir/main.cpp \
+    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/server_main_x64 $srcDir/server_main.cpp \
+    `sdl2-config --static-libs` -pg
+
+    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/client_main_x64 $srcDir/client_main.cpp \
     `sdl2-config --static-libs` -pg
 
     cp -r $dataDir/assets/* linux/

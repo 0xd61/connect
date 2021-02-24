@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SOURCES=( "main.cpp" )
+SOURCES=( "server_main.cpp" )
 _SOURCES=()
 MKSOURCES=""
 SCRIPT=$(readlink -f "$0")

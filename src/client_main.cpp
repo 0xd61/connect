@@ -271,7 +271,6 @@ int main(int argc, char *argv[])
                 switch(event.type)
                 {
                     case SDL_QUIT: { global_running = false; } break;
-                    case SDL_TEXTINPUT: { zhc_input_text(&input, event.text.text); } break;
                     case SDL_MOUSEBUTTONDOWN:
                     case SDL_MOUSEBUTTONUP:
                     {
@@ -301,25 +300,6 @@ int main(int argc, char *argv[])
                     case SDL_FINGERMOTION:
                     case SDL_FINGERDOWN:
                     case SDL_FINGERUP:
-
-                    case SDL_KEYDOWN:
-                    case SDL_KEYUP:
-                    {
-                        bool32 down = (event.type == SDL_KEYDOWN);
-
-                        if(event.key.keysym.sym == SDLK_LEFT)
-                        {
-                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Left, down);
-                        }
-                        else if(event.key.keysym.sym == SDLK_RIGHT)
-                        {
-                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Right, down);
-                        }
-                        else if((event.key.keysym.sym == SDLK_RETURN) ||
-                                (event.key.keysym.sym == SDLK_RETURN2) ||
-                                (event.key.keysym.sym == SDLK_KP_ENTER))
-                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Enter, down);
-                    } break;
                     default: {}
                 }
             }
@@ -335,7 +315,7 @@ int main(int argc, char *argv[])
 
             // TODO(dgl): only render if necessary
             // add render cache to only render rects that have changed
-            zhc_update_and_render(&memory, &input, &back_buffer);
+            zhc_update_and_render_client(&memory, &input, &back_buffer);
             SDL_UpdateWindowSurface(window);
 
 

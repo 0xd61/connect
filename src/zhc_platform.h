@@ -217,5 +217,6 @@ struct Zhc_Memory
 };
 
 // NOTE(dgl): zhc_lib.cpp
-void zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer *buffer);
+void zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer *buffer);
+void zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer *buffer);
 #endif // ZHC_PLATFORM_H
