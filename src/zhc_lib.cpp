@@ -157,6 +157,34 @@ get_id(Imui_Context *ctx, void *data, usize data_count)
     return(result);
 }
 
+internal bool32
+input_down(Zhc_Input *input, Zhc_Mouse_Button button)
+{
+    bool32 result = (input->mouse_down & button) == button;
+    return(result);
+}
+
+internal bool32
+input_down(Zhc_Input *input, Zhc_Keyboard_Button button)
+{
+    bool32 result = (input->key_down & button) == button;
+    return(result);
+}
+
+internal bool32
+input_pressed(Zhc_Input *input, Zhc_Keyboard_Button button)
+{
+    bool32 result = (input->key_pressed & button) == button;
+    return(result);
+}
+
+internal bool32
+input_pressed(Zhc_Input *input, char character)
+{
+    bool32 result = input->text[0] == character;
+    return(result);
+}
+
 internal Zhc_File_Info *
 get_file_info(Zhc_File_Group *group, int32 index)
 {
@@ -241,7 +269,7 @@ update_control_state(Imui_Context *ctx, Element_ID id, V4 body)
     LOG_DEBUG("Top most hot element: %u, Hot element %u, Active element: %u", ctx->top_most_hot, ctx->hot, ctx->active);
 #endif
     bool32 result = false;
-    bool32 mouse_left_down = (ctx->input->mouse_down & Zhc_Mouse_Button_Left) == Zhc_Mouse_Button_Left;
+    bool32 mouse_left_down = input_down(ctx->input, Zhc_Mouse_Button_Left);
 
     if(ctx->active == id)
     {
@@ -760,13 +788,17 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
             color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.025f),
             color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.5f));
 
+    // TODO(dgl): use command buffer instead of desired file etc..
     int32 button_w = 100;
     int32 button_h = 400;
     if(ui_button(ui_ctx,
                  rect(ui_ctx->window.w - button_w, (ui_ctx->window.h - button_h)/2, button_w, button_h),
                  color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.025f),
                  color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.5f),
-                 ui_ctx->system_font, ">"))
+                 ui_ctx->system_font, ">") ||
+       input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Right) ||
+       input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Enter) ||
+       input_pressed(ui_ctx->input, ' '))
     {
         if(state->files)
         {
@@ -778,7 +810,8 @@ zhc_update_and_render(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer
                  rect(0, (ui_ctx->window.h - button_h)/2, button_w, button_h),
                  color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.025f),
                  color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.5f),
-                 ui_ctx->system_font, "<"))
+                 ui_ctx->system_font, "<") ||
+       input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Left))
     {
         if(state->files)
         {

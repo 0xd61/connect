@@ -307,34 +307,18 @@ int main(int argc, char *argv[])
                     {
                         bool32 down = (event.type == SDL_KEYDOWN);
 
-                        if((event.key.keysym.sym == SDLK_LSHIFT) ||
-                           (event.key.keysym.sym == SDLK_RSHIFT))
+                        if(event.key.keysym.sym == SDLK_LEFT)
                         {
-                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Shift, down);
+                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Left, down);
                         }
-                        else if((event.key.keysym.sym == SDLK_LCTRL) ||
-                                (event.key.keysym.sym == SDLK_RCTRL))
+                        else if(event.key.keysym.sym == SDLK_RIGHT)
                         {
-                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Ctrl, down);
-                        }
-                        else if((event.key.keysym.sym == SDLK_LALT) ||
-                                (event.key.keysym.sym == SDLK_RALT))
-                        {
-                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Alt, down);
-                        }
-                        else if(event.key.keysym.sym == SDLK_DELETE)
-                        {
-                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Del, down);
-                        }
-                        else if(event.key.keysym.sym == SDLK_BACKSPACE)
-                        {
-                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Backspace, down);
+                            zhc_input_keybutton(&input, Zhc_Keyboard_Button_Right, down);
                         }
                         else if((event.key.keysym.sym == SDLK_RETURN) ||
+                                (event.key.keysym.sym == SDLK_RETURN2) ||
                                 (event.key.keysym.sym == SDLK_KP_ENTER))
-                        {
                             zhc_input_keybutton(&input, Zhc_Keyboard_Button_Enter, down);
-                        }
                     } break;
                     default: {}
                 }

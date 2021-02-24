@@ -95,12 +95,9 @@ enum Zhc_Mouse_Button
 // NOTE(dgl): max 32 supported
 enum Zhc_Keyboard_Button
 {
-    Zhc_Keyboard_Button_Shift = (1 << 0),
-    Zhc_Keyboard_Button_Ctrl = (1 << 1),
-    Zhc_Keyboard_Button_Alt = (1 << 2),
-    Zhc_Keyboard_Button_Del = (1 << 3),
-    Zhc_Keyboard_Button_Backspace = (1 << 4),
-    Zhc_Keyboard_Button_Enter = (1 << 5)
+    Zhc_Keyboard_Button_Left = (1 << 0),
+    Zhc_Keyboard_Button_Right = (1 << 1),
+    Zhc_Keyboard_Button_Enter = (1 << 2)
 };
 
 struct Zhc_Input
@@ -114,6 +111,7 @@ struct Zhc_Input
 
     // NOTE(dgl): only modifier key. We get the text from SDL2.
     int32 key_down;
+    int32 key_pressed;
     int32 mouse_down;
 
     // NOTE(dgl): text from text input event
@@ -140,7 +138,11 @@ struct Zhc_File_Group
 inline void
 zhc_input_keybutton(Zhc_Input *input, Zhc_Keyboard_Button key, bool32 down)
 {
-    if(down) { input->key_down |= key; }
+    if(down)
+    {
+        input->key_pressed |= key;
+        input->key_down |= key;
+    }
     else { input->key_down &= ~key; }
 }
 
@@ -182,6 +184,7 @@ zhc_input_reset(Zhc_Input *input)
     input->text[0] = '\0';
     input->scroll_delta = v2(0, 0);
     input->last_pos = input->pos;
+    input->key_pressed = 0;
 }
 
 // NOTE(dgl): Global api. Use separate api file later...
