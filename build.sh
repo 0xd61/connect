@@ -14,7 +14,8 @@ CommonCompilerFlags="-O0 -g -ggdb -fdiagnostics-color=always -std=c++11 -fno-rtt
 CommonDefines="-DZHC_DEBUG=1 -DZHC_INTERNAL=1 -DOS_NAME=${OS_NAME}"
 
 # the goal should be -nostdlib
-CommonLinkerFlags="-Wl,--gc-sections -lm"
+# TODO(dgl): link sdl2_net statically
+CommonLinkerFlags="-Wl,--gc-sections -lm -lSDL2_net"
 
 if [ -z "$1" ]; then
     OS_NAME=$(uname -o 2>/dev/null || uname -s)

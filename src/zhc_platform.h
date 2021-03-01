@@ -118,23 +118,6 @@ struct Zhc_Input
     char text[32];
 };
 
-struct Zhc_File_Info
-{
-    Zhc_File_Info *next;
-    // NOTE(dgl): only filename, without path
-    char *filename;
-    usize size;
-};
-
-// NOTE(dgl): files are stored in reverse order.
-struct Zhc_File_Group
-{
-    int32 count;
-    Zhc_File_Info *first_file_info;
-    DGL_Mem_Arena *arena;
-    char *dirpath;
-};
-
 inline void
 zhc_input_keybutton(Zhc_Input *input, Zhc_Keyboard_Button key, bool32 down)
 {
@@ -187,6 +170,39 @@ zhc_input_reset(Zhc_Input *input)
     input->key_pressed = 0;
 }
 
+struct Zhc_File_Info
+{
+    Zhc_File_Info *next;
+    // NOTE(dgl): only filename, without path
+    char *filename;
+    usize size;
+};
+
+struct Zhc_File_Group
+{
+    int32 count;
+    Zhc_File_Info *first_file_info;
+    DGL_Mem_Arena *arena;
+    char *dirpath;
+};
+
+struct Zhc_Net_IP
+{
+    union
+    {
+        uint8 ip[4];
+        uint32 host;
+    };
+    uint16 port;
+};
+
+struct Zhc_Net_Socket
+{
+    Zhc_Net_IP address;
+    void *platform;
+    bool32 no_error;
+};
+
 // NOTE(dgl): Global api. Use separate api file later...
 #define ZHC_GET_DIRECTORY_FILENAMES(name) Zhc_File_Group * name(DGL_Mem_Arena *arena, char *path)
 typedef ZHC_GET_DIRECTORY_FILENAMES(Zhc_Get_Directory_Filenames);
@@ -198,6 +214,18 @@ typedef ZHC_READ_ENTIRE_FILE(Zhc_Read_Entire_File);
 typedef ZHC_GET_USER_DATA_BASE_PATH(Zhc_Get_User_Data_Base_Path);
 #define ZHC_GET_DATA_BASE_PATH(name) bool32 name(DGL_String_Builder *builder)
 typedef ZHC_GET_DATA_BASE_PATH(Zhc_Get_Data_Base_Path);
+#define ZHC_SETUP_SOCKET(name) void name(DGL_Mem_Arena *arena, Zhc_Net_Socket *socket)
+typedef ZHC_SETUP_SOCKET(Zhc_Setup_Socket);
+// NOTE(dgl): returns false if no data is available. If IP is null, we return the message that is available.
+// If peer ip is not null, we put the message from this sender into the buffer, if available.
+// The api must somehow provide the peer_ip to the caller.
+// TODO(dgl): how do we do this properly. The best thing would be to return the client_ip. But what do we return if no
+// data was available? Another possibility would be to fill the peer_address, if not provided. I think this would be the better
+// approach.
+#define ZHC_RECEIVE_DATA(name) bool32 name(Zhc_Net_Socket *socket, Zhc_Net_IP *peer_address, void *buffer, usize buffer_size)
+typedef ZHC_RECEIVE_DATA(Zhc_Receive_Data);
+#define ZHC_SEND_DATA(name) void name(Zhc_Net_Socket *socket, Zhc_Net_IP *target_address, void *buffer, usize buffer_size)
+typedef ZHC_SEND_DATA(Zhc_Send_Data);
 
 struct Zhc_Platform_Api
 {
@@ -206,14 +234,19 @@ struct Zhc_Platform_Api
     Zhc_Read_Entire_File *read_entire_file;
     Zhc_Get_User_Data_Base_Path *get_user_data_base_path;
     Zhc_Get_Data_Base_Path *get_data_base_path;
+    Zhc_Setup_Socket *setup_socket;
+    Zhc_Receive_Data *receive_data;
+    Zhc_Send_Data *send_data;
 };
 
 struct Zhc_Memory
 {
     Zhc_Platform_Api api;
 
-    usize storage_size;
-    void *storage; // NOTE(dgl): REQUIRED to be cleared to zero at startup
+    usize permanent_storage_size;
+    void *permanent_storage; // NOTE(dgl): REQUIRED to be cleared to zero at startup
+    usize transient_storage_size;
+    void *transient_storage; // NOTE(dgl): REQUIRED to be cleared to zero at startup
 };
 
 // NOTE(dgl): zhc_lib.cpp

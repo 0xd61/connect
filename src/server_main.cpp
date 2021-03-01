@@ -5,6 +5,7 @@
 #include <SDL.h>
 #else
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_net.h>
 #endif
 
 #define DGL_IMPLEMENTATION
@@ -16,7 +17,229 @@
 // not in Microsoft Visual C++.
 #include <dirent.h> /* opendir, readdir */
 
+#define MAX_CLIENTS 4
+
 global bool32 global_running;
+
+struct SDL_Client
+{
+    IPaddress peer;
+    TCPsocket socket;
+};
+
+struct SDL_Server_Socket
+{
+    TCPsocket socket;
+    SDLNet_SocketSet set;
+    SDL_Client clients[MAX_CLIENTS];
+};
+
+internal bool32
+is_ip_address(Zhc_Net_IP a, IPaddress b)
+{
+    bool32 result = false;
+    if((a.host == b.host) &&
+#if SDL_BYTEORDER == SDL_LIL_ENDIAN
+       (a.port == SDL_Swap16(b.port)))
+#else
+       (a.port == b.port))
+#endif
+    {
+        result = true;
+    }
+
+    return(result);
+}
+
+internal SDL_Client *
+get_client(SDL_Server_Socket *platform, Zhc_Net_IP ip)
+{
+    SDL_Client *result = 0;
+    // NOTE(dgl): ip and port must be greater than 0. There cannot be a
+    // client with the IP 0.0.0.0
+    if(ip.host > 0 && ip.port > 0)
+    {
+        for(int32 index = 0; index < array_count(platform->clients); ++index)
+        {
+            SDL_Client *client = platform->clients + index;
+            if(is_ip_address(ip, client->peer))
+            {
+                result = client;
+                break;
+            }
+        }
+    }
+
+    return(result);
+}
+
+ZHC_SEND_DATA(sdl_net_send_data)
+{
+    assert(target_address, "Target address cannot be null");
+    SDL_Server_Socket *platform = (SDL_Server_Socket *)socket->platform;
+    SDL_Client *client = get_client(platform, *target_address);
+
+    if(client)
+    {
+        int32 result = SDLNet_TCP_Send(client->socket, buffer, dgl_safe_size_to_int32(buffer_size));
+        if(result <= 0)
+        {
+            LOG("Sending data to socket failed with: %s. Closing socket", SDLNet_GetError());
+            SDLNet_TCP_DelSocket(platform->set, client->socket);
+            SDLNet_TCP_Close(client->socket);
+            client->socket = 0;
+            client->peer = {};
+        }
+        else
+        {
+            LOG_DEBUG("Sending %d bytes", result);
+        }
+    }
+}
+
+ZHC_RECEIVE_DATA(sdl_net_receive_data)
+{
+    bool32 result = false;
+    SDL_Server_Socket *platform = (SDL_Server_Socket *)socket->platform;
+
+    int32 ready_count = SDLNet_CheckSockets(platform->set, 0);
+    if(ready_count > 0)
+    {
+        // NOTE(dgl): handle new incoming connecitons
+        if(SDLNet_SocketReady(platform->socket))
+        {
+            // TODO(dgl): handle inactive and failed clients (e.g. when the proccess is killed
+            // without properly closing the connection)
+            TCPsocket client_socket = SDLNet_TCP_Accept(platform->socket);
+            if(client_socket)
+            {
+                --ready_count;
+                int32 index = 0;
+                while(index < array_count(platform->clients))
+                {
+                    SDL_Client *client = platform->clients + index++;
+                    if(!client->socket)
+                    {
+                        client->socket = client_socket;
+                        client->peer = *SDLNet_TCP_GetPeerAddress(client_socket);
+                        SDLNet_TCP_AddSocket(platform->set, client->socket);
+                        LOG_DEBUG("New client connection");
+                        break;
+                    }
+                }
+
+                if(index == array_count(platform->clients))
+                {
+                    LOG("No free client slot available");
+                }
+            }
+        }
+
+        // NOTE(dgl): handle client requests (only if there was activity)
+        if(ready_count > 0)
+        {
+            --ready_count;
+            assert(peer_address, "Peer address cannot be null");
+
+            // TODO(dgl): @@cleanup
+            for(int32 index = 0; index < array_count(platform->clients); ++index)
+            {
+                SDL_Client *client = platform->clients + index;
+
+                // NOTE(dgl): if a client address is provided we only check for this specific
+                // client, if data is available. We still loop though all clients. @@performance
+                // If there is no address and port, we fill the struct with the data of the current
+                // client @@cleanup
+                if(peer_address->port > 0 && peer_address->host > 0)
+                {
+                    if(!is_ip_address(*peer_address, client->peer))
+                    {
+                        continue;
+                    }
+                }
+
+                if(SDLNet_SocketReady(client->socket))
+                {
+                    int32 success = SDLNet_TCP_Recv(client->socket, buffer, dgl_safe_size_to_int32(buffer_size));
+                    if(success <= 0)
+                    {
+                        LOG("Receiving data from socket failed with: %s. Closing socket", SDLNet_GetError());
+                        SDLNet_TCP_DelSocket(platform->set, client->socket);
+                        SDLNet_TCP_Close(client->socket);
+                        client->socket = 0;
+                        client->peer = {};
+                    }
+                    else
+                    {
+                        // NOTE(dgl): if no address was provided we return the peer address
+                        // to the caller function
+                        if(peer_address->port == 0 && peer_address->host == 0)
+                        {
+                            peer_address->host = client->peer.host;
+#if SDL_BYTEORDER == SDL_LIL_ENDIAN
+                            peer_address->port = SDL_Swap16(client->peer.port);
+#else
+                            peer_address->port = client->peer.port;
+#endif
+                        }
+
+                        LOG_DEBUG("Receiving %d bytes", success);
+                    }
+
+                    break;
+                }
+            }
+        }
+    }
+    else if(ready_count < 0)
+    {
+        LOG("Checking ready sockets failed with: %s", SDLNet_GetError());
+    }
+
+    if(ready_count > 0)
+    {
+        result = true;
+    }
+
+    return(result);
+}
+
+ZHC_SETUP_SOCKET(sdl_net_setup_socket_set)
+{
+    IPaddress ip = {};
+    ip.host = socket->address.host;
+#if SDL_BYTEORDER == SDL_LIL_ENDIAN
+    ip.port = SDL_Swap16(socket->address.port);
+#else
+    ip.port = socket->address.port;
+#endif
+
+    // NOTE(dgl): 1 server socket and max_clients client sockets
+    SDLNet_SocketSet set = SDLNet_AllocSocketSet(MAX_CLIENTS + 1);
+    if(set)
+    {
+        TCPsocket server_tcpsock = SDLNet_TCP_Open(&ip);
+        if(server_tcpsock)
+        {
+            SDLNet_TCP_AddSocket(set, server_tcpsock);
+
+            SDL_Server_Socket *server_socket = dgl_mem_arena_push_struct(arena, SDL_Server_Socket);
+            server_socket->socket = server_tcpsock;
+            server_socket->set = set;
+
+            socket->platform = server_socket;
+            socket->no_error = true;
+        }
+        else
+        {
+            LOG("Opening TCP socket failed with: %s", SDLNet_GetError());
+        }
+    }
+    else
+    {
+        LOG("Allocating sockets failed with: %s", SDLNet_GetError());
+    }
+}
 
 ZHC_FILE_SIZE(sdl_file_size)
 {
@@ -31,7 +254,7 @@ ZHC_FILE_SIZE(sdl_file_size)
     }
     else
     {
-        LOG_DEBUG("SDL_RWFromFile failed for %s with error: %s", filename, SDL_GetError());
+        LOG("SDL_RWFromFile failed for %s with error: %s", filename, SDL_GetError());
     }
     return(result);
 }
@@ -146,7 +369,7 @@ ZHC_GET_DATA_BASE_PATH(sdl_internal_storage_path)
     }
     else
     {
-        LOG_DEBUG("SDL Get Path failed: %s", SDL_GetError());
+        LOG("SDL Get Path failed: %s", SDL_GetError());
     }
 #endif
 
@@ -194,7 +417,7 @@ ZHC_READ_ENTIRE_FILE(sdl_read_entire_file)
     }
     else
     {
-        LOG_DEBUG("SDL_RWFromFile failed for %s with error: %s", filename, SDL_GetError());
+        LOG("SDL_RWFromFile failed for %s with error: %s", filename, SDL_GetError());
     }
 
     return(result);
@@ -215,9 +438,16 @@ int main(int argc, char *argv[])
     dgl_log_init(get_time_in_ms);
 
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
-        SDL_Log("Unable to initialize SDL: %s", SDL_GetError());
+        LOG("Unable to initialize SDL: %s", SDL_GetError());
         return(1);
     }
+    if(SDLNet_Init() != 0)
+    {
+        LOG("Unable to initialize SDLNet: %s", SDLNet_GetError());
+        return(1);
+    }
+
+
     SDL_DisableScreenSaver();
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
@@ -238,21 +468,31 @@ int main(int argc, char *argv[])
     void *base_address = 0;
 #endif
 
-    usize memory_size = megabytes(64);
+    usize permanent_memory_size = megabytes(32);
+    usize transient_memory_size = megabytes(16);
 
-    void *memory_block = mmap(base_address, memory_size,
+    // NOTE(dgl): Must be cleared to zero!!
+    void *memory_block = mmap(base_address, permanent_memory_size + transient_memory_size,
                               PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 
     if(memory_block != cast(void *)-1)
     {
+        void *permanent_memory_block = memory_block;
+        void *transient_memory_block = cast(uint8 *)memory_block + permanent_memory_size;
+
         Zhc_Memory memory = {};
-        memory.storage_size = memory_size;
-        memory.storage = memory_block;
+        memory.permanent_storage_size = permanent_memory_size;
+        memory.permanent_storage = permanent_memory_block;
+        memory.transient_storage_size = transient_memory_size;
+        memory.transient_storage = transient_memory_block;
         memory.api.read_entire_file = sdl_read_entire_file;
         memory.api.file_size = sdl_file_size;
         memory.api.get_directory_filenames = get_directory_filenames;
         memory.api.get_data_base_path = sdl_internal_storage_path;
         memory.api.get_user_data_base_path = sdl_external_storage_path;
+        memory.api.setup_socket = sdl_net_setup_socket_set;
+        memory.api.send_data = sdl_net_send_data;
+        memory.api.receive_data = sdl_net_receive_data;
 
         Zhc_Offscreen_Buffer back_buffer = {};
         Zhc_Input input = {};

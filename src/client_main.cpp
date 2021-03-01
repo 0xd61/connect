@@ -5,6 +5,7 @@
 #include <SDL.h>
 #else
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_net.h>
 #endif
 
 #define DGL_IMPLEMENTATION
@@ -17,6 +18,103 @@
 #include <dirent.h> /* opendir, readdir */
 
 global bool32 global_running;
+
+struct SDL_Client_Socket
+{
+    TCPsocket socket;
+};
+
+ZHC_SEND_DATA(sdl_net_send_data)
+{
+    assert(target_address, "Target address cannot be null");
+    SDL_Client_Socket *platform = (SDL_Client_Socket *)socket->platform;
+    int32 result = SDLNet_TCP_Send(platform->socket, buffer, dgl_safe_size_to_int32(buffer_size));
+    if(result <= 0)
+    {
+        SDLNet_TCP_Close(platform->socket);
+        socket->no_error = false;
+    }
+    else
+    {
+        LOG_DEBUG("Sending %d bytes", result);
+    }
+}
+
+internal bool32
+is_ip_address(Zhc_Net_IP a, IPaddress b)
+{
+    bool32 result = false;
+    if((a.host == b.host) &&
+#if SDL_BYTEORDER == SDL_LIL_ENDIAN
+       (a.port == SDL_Swap16(b.port)))
+#else
+       (a.port == b.port))
+#endif
+    {
+        result = true;
+    }
+
+    return(result);
+}
+
+ZHC_RECEIVE_DATA(sdl_net_receive_data)
+{
+    bool32 result = false;
+    SDL_Client_Socket *platform = (SDL_Client_Socket *)socket->platform;
+
+    if(peer_address->port > 0 && peer_address->host > 0)
+    {
+        IPaddress *real_peer = SDLNet_TCP_GetPeerAddress(platform->socket);
+        if(is_ip_address(*peer_address, *real_peer))
+        {
+            int32 success = SDLNet_TCP_Recv(platform->socket, buffer, dgl_safe_size_to_int32(buffer_size));
+            if(success <= 0)
+            {
+                SDLNet_TCP_Close(platform->socket);
+                socket->no_error = false;
+            }
+        }
+    }
+    else
+    {
+        int32 success = SDLNet_TCP_Recv(platform->socket, buffer, dgl_safe_size_to_int32(buffer_size));
+        if(success <= 0)
+        {
+            SDLNet_TCP_Close(platform->socket);
+            socket->no_error = false;
+        }
+        else
+        {
+            LOG_DEBUG("Receiving %d bytes", success);
+        }
+    }
+    return(result);
+}
+
+ZHC_SETUP_SOCKET(sdl_net_setup_socket)
+{
+    IPaddress ip = {};
+    ip.host = socket->address.host;
+#if SDL_BYTEORDER == SDL_LIL_ENDIAN
+    ip.port = SDL_Swap16(socket->address.port);
+#else
+    ip.port = socket->address.port;
+#endif
+
+    TCPsocket tcpsock = SDLNet_TCP_Open(&ip);
+    if(tcpsock)
+    {
+        SDL_Client_Socket *client_socket = dgl_mem_arena_push_struct(arena, SDL_Client_Socket);
+        client_socket->socket = tcpsock;
+
+        socket->platform = client_socket;
+        socket->no_error = true;
+    }
+    else
+    {
+        LOG("Opening TCP socket failed with: %s", SDLNet_GetError());
+    }
+}
 
 ZHC_FILE_SIZE(sdl_file_size)
 {
@@ -238,21 +336,31 @@ int main(int argc, char *argv[])
     void *base_address = 0;
 #endif
 
-    usize memory_size = megabytes(64);
+    usize permanent_memory_size = megabytes(32);
+    usize transient_memory_size = megabytes(16);
 
-    void *memory_block = mmap(base_address, memory_size,
+    // NOTE(dgl): Must be cleared to zero!!
+    void *memory_block = mmap(base_address, permanent_memory_size + transient_memory_size,
                               PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 
     if(memory_block != cast(void *)-1)
     {
+        void *permanent_memory_block = memory_block;
+        void *transient_memory_block = cast(uint8 *)memory_block + permanent_memory_size;
+
         Zhc_Memory memory = {};
-        memory.storage_size = memory_size;
-        memory.storage = memory_block;
+        memory.permanent_storage_size = permanent_memory_size;
+        memory.permanent_storage = permanent_memory_block;
+        memory.transient_storage_size = transient_memory_size;
+        memory.transient_storage = transient_memory_block;
         memory.api.read_entire_file = sdl_read_entire_file;
         memory.api.file_size = sdl_file_size;
         memory.api.get_directory_filenames = get_directory_filenames;
         memory.api.get_data_base_path = sdl_internal_storage_path;
         memory.api.get_user_data_base_path = sdl_external_storage_path;
+        memory.api.setup_socket = sdl_net_setup_socket;
+        memory.api.send_data = sdl_net_send_data;
+        memory.api.receive_data = sdl_net_receive_data;
 
         Zhc_Offscreen_Buffer back_buffer = {};
         Zhc_Input input = {};
