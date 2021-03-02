@@ -1,4 +1,6 @@
 #include "zhc_platform.h"
+// TODO(dgl): should we make this lib a shared lib?
+#include "zhc_lib.h"
 #include "zhc_lib.cpp"
 
 #ifdef __ANDROID__
@@ -17,7 +19,7 @@
 // not in Microsoft Visual C++.
 #include <dirent.h> /* opendir, readdir */
 
-#define MAX_CLIENTS 4
+#define MAX_CLIENTS 64
 
 global bool32 global_running;
 

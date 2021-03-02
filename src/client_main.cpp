@@ -1,4 +1,6 @@
 #include "zhc_platform.h"
+// TODO(dgl): should we make this lib a shared lib?
+#include "zhc_lib.h"
 #include "zhc_lib.cpp"
 
 #ifdef __ANDROID__
