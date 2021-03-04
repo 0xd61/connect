@@ -54,4 +54,25 @@ parse_version(char *string)
     return(result);
 }
 
+inline uint16
+bswap16(uint16 value)
+{
+    uint16 result = __builtin_bswap16(value);
+    return(result);
+}
+
+inline uint32
+bswap32(uint32 value)
+{
+    uint32 result = __builtin_bswap32(value);
+    return(result);
+}
+
+inline uint64
+bswap64(uint64 value)
+{
+    uint64 result = __builtin_bswap64(value);
+    return(result);
+}
+
 #endif // ZHC_UTILS

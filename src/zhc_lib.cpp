@@ -75,13 +75,16 @@ read_active_file(DGL_Mem_Arena *arena, Zhc_File_Group *group, Zhc_File_Info *inf
         result.info = info;
         result.data = dgl_mem_arena_push_array(arena, uint8, result.info->size);
 
-        // TODO(dgl): do proper string handling
-        char filepath[1024] = {};
+        DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(arena);
+        {
+            DGL_String_Builder temp_builder = dgl_string_builder_init(temp.arena, 128);
+            dgl_string_append(&temp_builder, "%s%s", group->dirpath, result.info->filename);
 
-        sprintf(filepath, "%s%s", group->dirpath, result.info->filename);
-        LOG_DEBUG("Loading file %s", filepath);
-        platform.read_entire_file(filepath, result.data, result.info->size);
-
+            char *filepath = dgl_string_c_style(&temp_builder);
+            LOG_DEBUG("Loading file %s", filepath);
+            platform.read_entire_file(filepath, result.data, result.info->size);
+        }
+        dgl_mem_arena_end_temp(temp);
         result.hash = HASH_OFFSET_BASIS;
         hash(&result.hash, result.data, result.info->size);
     }
@@ -240,9 +243,10 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     bool32 data_available = true;
     while(data_available)
     {
-        Net_Msg_Header header = {};
         Zhc_Net_IP address = {};
-        data_available = platform.receive_data(&state->net_socket, &address, &header, sizeof(header));
+        Net_Msg_Header header = {};
+
+        data_available = net_recv_header(&state->net_socket, &address, &header);
 
         if(header.type > 0)
         {
@@ -299,7 +303,6 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         LOG_DEBUG("Lib_State size: %lld, Available memory: %lld", sizeof(*state), memory->permanent_storage_size);
         dgl_mem_arena_init(&state->permanent_arena, (uint8 *)memory->permanent_storage + sizeof(*state), ((DGL_Mem_Index)memory->permanent_storage_size - sizeof(*state)));
         dgl_mem_arena_init(&state->transient_arena, (uint8 *)memory->transient_storage, (DGL_Mem_Index)memory->transient_storage_size);
-        // TODO(dgl): create transient storage and put the initializing stuff there instead of a temp arena.
 
         state->ui_ctx = ui_context_init(&state->permanent_arena);
 
@@ -364,7 +367,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
             // TODO(dgl): @@important The receive_call is blocking. This is why we only check for incoming messages
             // after we sent the data. In the future we will switch to non blocking calls @@cleanup
-            platform.receive_data(&state->net_socket, &_address, &header, sizeof(header));
+            net_recv_header(&state->net_socket, &_address, &header);
 
             if(header.type > 0)
             {
@@ -376,7 +379,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
                         if(header.size > 0)
                         {
                             uint32 hash = 0;
-                            platform.receive_data(&state->net_socket, &_address, &hash, sizeof(hash));
+                            net_recv_data(&state->net_socket, &_address, &hash, sizeof(hash));
 
                             if(hash != state->active_file.hash)
                             {
@@ -398,7 +401,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
                             info->filename = "\0";
                             info->size = header.size;
                             uint8 *data = dgl_mem_arena_push_array(&state->io_arena, uint8, info->size);
-                            platform.receive_data(&state->net_socket, &_address, data, info->size);
+                            net_recv_data(&state->net_socket, &_address, data, info->size);
 
                             state->active_file.info = info;
                             state->active_file.data = data;
@@ -416,7 +419,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     }
     else
     {
-        // TODO(dgl): close socket if there is any
+        // TODO(dgl): close socket if there is any error
         state->net_socket = net_init_socket(&state->permanent_arena, "127.0.0.1", 1337);
     }
 

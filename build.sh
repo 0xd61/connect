@@ -11,7 +11,7 @@ CommonCompilerFlags="-O0 -g -ggdb -fdiagnostics-color=always -std=c++11 -fno-rtt
 -Wno-error=unused-variable -Wno-unused-function
 -Wno-error=unused-command-line-argument"
 
-CommonDefines="-DZHC_DEBUG=1 -DZHC_INTERNAL=1 -DOS_NAME=${OS_NAME}"
+CommonDefines="-DZHC_BIG_ENDIAN=0 -DZHC_DEBUG=1 -DZHC_INTERNAL=1 -DOS_NAME=${OS_NAME}"
 
 # the goal should be -nostdlib
 # TODO(dgl): link sdl2_net statically
@@ -40,8 +40,19 @@ if [ "$OS_NAME" == "GNU/Linux" ] || \
    [ "$OS_NAME" == "Linux" ] || \
    [ "$OS_NAME" == "linux" ]; then
     mkdir -p linux
+
+    echo "Building tests"
+    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_sdl2_api_x64 $srcDir/sdl2_api_test.cpp \
+    `sdl2-config --static-libs` -pg
+    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_zhc_net_x64 $srcDir/zhc_net_test.cpp \
+    `sdl2-config --static-libs` -pg
+    echo "Testing:"
+    ./linux/test_sdl2_api_x64
+    ./linux/test_zhc_net_x64
+
     # PIC = Position Independent Code
     # -lm -> we have to link the math library...
+    echo "Building application"
     clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/server_main_x64 $srcDir/server_main.cpp \
     `sdl2-config --static-libs` -pg
 

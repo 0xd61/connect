@@ -8,6 +8,9 @@
 
 #define ZHC_VERSION "0.1.0"
 
+// TODO(dgl): check file size on read file or filegroup
+#define ZHC_MAX_FILESIZE megabytes(1)
+
 global Zhc_Platform_Api platform;
 
 struct File

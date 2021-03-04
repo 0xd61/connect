@@ -45,6 +45,22 @@ extern "C" {
 // Compilers and Platforms
 //
 
+#if defined(_WIN32) || defined(_WIN64)
+	#ifndef DGL_OS_WINDOWS
+	#define DGL_OS_WINDOWS 1
+	#endif
+#elif defined(__APPLE__) && defined(__MACH__)
+	#ifndef DGL_OS_OSX
+	#define DGL_OS_OSX 1
+	#endif
+#elif defined(__unix__)
+	#ifndef DGL_OS_UNIX
+	#define DGL_OS_UNIX 1
+	#endif
+#else
+	#error This operating system is not supported
+#endif
+
 #ifndef COMPILER_MSVC
 #define COMPILER_MSVC 0
 #endif
@@ -130,7 +146,7 @@ typedef size_t usize;
 // Safe Truncate
 //
 
-inline uint32
+DGL_DEF inline uint32
 dgl_safe_truncate_uint32(uint64 value)
 {
     dgl_assert(value <= 0xFFFFFFFF, "Failed to safely truncate value");
@@ -138,7 +154,7 @@ dgl_safe_truncate_uint32(uint64 value)
     return(result);
 }
 
-inline int32
+DGL_DEF inline int32
 dgl_safe_truncate_int32(int64 value)
 {
     dgl_assert(value <= 0xFFFFFFFF, "Failed to safely truncate value");
@@ -146,7 +162,7 @@ dgl_safe_truncate_int32(int64 value)
     return(result);
 }
 
-inline uint32
+DGL_DEF inline uint32
 dgl_safe_size_to_uint32(usize value)
 {
     dgl_assert(value <= 0xFFFFFFFF, "Failed to safely truncate value");
@@ -154,7 +170,7 @@ dgl_safe_size_to_uint32(usize value)
     return(result);
 }
 
-inline int32
+DGL_DEF inline int32
 dgl_safe_size_to_int32(usize value)
 {
     dgl_assert(value <= 0xFFFFFFFF, "Failed to safely truncate value");
@@ -168,7 +184,7 @@ dgl_safe_size_to_int32(usize value)
 //
 #ifndef DGL_NO_INTRINSICS
 #include <math.h>
-local_inline uint32
+DGL_DEF inline uint32
 dgl_round_real32_to_uint32(real32 value)
 {
     dgl_assert(value >= 0.0f, "Number must be positive");
@@ -177,51 +193,49 @@ dgl_round_real32_to_uint32(real32 value)
     return(result);
 }
 
-local_inline int32
+DGL_DEF inline int32
 dgl_round_real32_to_int32(real32 value)
 {
     int32 result = (int32)roundf(value);
     return(result);
 }
 
-// NOTE(dgl): In the platform layer we use the native __sync_val_compare_and_swap
-// to be more flexible. We should change this in the future to be more consistent.
-// But this is easier for now, to support different types.
 #if COMPILER_LLVM
-local_inline uint32
+DGL_DEF inline uint32
 dgl_atomic_compare_exchange_uint32(uint32 volatile *value, uint32 new_val, uint32 expected)
 {
     uint32 result = __sync_val_compare_and_swap(value, expected, new_val);
     return(result);
 }
-local_inline int32
+DGL_DEF inline int32
 dgl_atomic_compare_exchange_int32(int32 volatile *value, int32 new_val, int32 expected)
 {
     int32 result = __sync_val_compare_and_swap(value, expected, new_val);
     return(result);
 }
-local_inline uintptr
+DGL_DEF inline uintptr
 dgl_atomic_compare_exchange_uintptr(uintptr volatile *value, uintptr new_val, uintptr expected)
 {
     uintptr result = __sync_val_compare_and_swap(value, expected, new_val);
     return(result);
 }
+
 // TODO(dgl): not tested
 #elif COMPILER_MSVC
-local_inline uint32
+DGL_DEF inline uint32
 dgl_atomic_compare_exchange_uint32(uint32 volatile *value, uint32 new_val, uint32 expected)
 {
     uint32 result = _InterlockedCompareExchange((long *)value, new_val, expected);
 
     return(result);
 }
-local_inline int32
+DGL_DEF inline int32
 dgl_atomic_compare_exchange_int32(int32 volatile *value, int32 new_val, int32 expected)
 {
     int32 result = _InterlockedCompareExchange((long *)value, new_val, expected);
     return(result);
 }
-local_inline uintptr
+DGL_DEF inline uintptr
 dgl_atomic_compare_exchange_uintptr(uintptr volatile *value, uintptr new_val, uintptr expected)
 {
     uintptr result = _InterlockedCompareExchange(value, new_val, expected);
@@ -434,33 +448,39 @@ dgl__unlock()
 void
 dgl__log_internal(char *file, int32 line, char *fmt, ...)
 {
-    dgl_assert(dgl_logger.initialized, "Logger must be initialized");
-    dgl_assert(dgl_logger.get_time, "time_in_ms must be a valid function");
-    int64 milliseconds = dgl_logger.get_time();
-    int32 seconds = dgl_cast(int32)(milliseconds / 1000);
-    milliseconds = milliseconds % 1000;
-    int32 minutes = seconds / 60;
-    seconds = seconds % 60;
-    int32 hours = minutes / 60;
-    minutes = minutes % 60;
-
-    dgl__lock();
-    if(file)
+    if(dgl_logger.initialized)
     {
-        fprintf(stdout, "%02d:%02d:%02d.%04lld %s:%d: ", hours, minutes, seconds, milliseconds, file, line);
+       dgl_assert(dgl_logger.get_time, "time_in_ms must be a valid function");
+       int64 milliseconds = dgl_logger.get_time();
+       int32 seconds = dgl_cast(int32)(milliseconds / 1000);
+       milliseconds = milliseconds % 1000;
+       int32 minutes = seconds / 60;
+       seconds = seconds % 60;
+       int32 hours = minutes / 60;
+       minutes = minutes % 60;
+
+       dgl__lock();
+       if(file)
+       {
+           fprintf(stdout, "%02d:%02d:%02d.%04lld %s:%d: ", hours, minutes, seconds, milliseconds, file, line);
+       }
+       else
+       {
+           fprintf(stdout, "%02d:%02d:%02d.%04lld: ", hours, minutes, seconds, milliseconds);
+       }
+
+       va_list ap;
+       va_start(ap, fmt);
+       vfprintf(stdout, fmt, ap);
+       fprintf(stdout, "\n");
+       fflush(stdout);
+       va_end(ap);
+       dgl__unlock();
     }
     else
     {
-        fprintf(stdout, "%02d:%02d:%02d.%04lld: ", hours, minutes, seconds, milliseconds);
+       //fprintf(stdout, "Failed to write log at %s:%d (Logger must be initialized)\n", file, line);
     }
-
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(stdout, fmt, ap);
-    fprintf(stdout, "\n");
-    fflush(stdout);
-    va_end(ap);
-    dgl__unlock();
 
 }
 

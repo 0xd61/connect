@@ -153,6 +153,14 @@ ZHC_RECEIVE_DATA(sdl_net_server_receive_data)
                         LOG("Receiving data from socket failed with: %s. Closing socket", SDLNet_GetError());
                         SDLNet_TCP_DelSocket(platform->set, client->socket);
                         SDLNet_TCP_Close(client->socket);
+
+                        peer_address->host = client->peer.host;
+#if SDL_BYTEORDER == SDL_LIL_ENDIAN
+                        peer_address->port = SDL_Swap16(client->peer.port);
+#else
+                        peer_address->port = client->peer.port;
+#endif
+
                         client->socket = 0;
                         client->peer = {};
                     }
@@ -376,10 +384,29 @@ ZHC_GET_DIRECTORY_FILENAMES(get_directory_filenames)
     {
         result = dgl_mem_arena_push_struct(arena, Zhc_File_Group);
         result->arena = arena;
+
         usize dirpath_count = dgl_string_length(path);
+
+        // NOTE(dgl): ensure the dirpath ends with a \ or /
+#ifdef DGL_OS_WINDOWS
+        if(path[dirpath_count - 1] != '\\')
+        {
+            dirpath_count++;
+        }
         result->dirpath = dgl_mem_arena_push_array(arena, char, dirpath_count + 1);
         dgl_memcpy(result->dirpath, path, dirpath_count);
+        result->dirpath[dirpath_count - 1] = '\\';
         result->dirpath[dirpath_count] = '\0';
+#else
+        if(path[dirpath_count - 1] != '/')
+        {
+            dirpath_count++;
+        }
+        result->dirpath = dgl_mem_arena_push_array(arena, char, dirpath_count + 1);
+        dgl_memcpy(result->dirpath, path, dirpath_count);
+        result->dirpath[dirpath_count - 1] = '/';
+        result->dirpath[dirpath_count] = '\0';
+#endif
 
         struct dirent *entry;
         while((entry = readdir(dir)))
@@ -396,11 +423,8 @@ ZHC_GET_DIRECTORY_FILENAMES(get_directory_filenames)
             DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(result->arena);
 
             DGL_String_Builder tmp_builder = dgl_string_builder_init(temp.arena, 128);
-#ifdef _WIN32
-            dgl_string_append(&tmp_builder, "%s\\%s", result->dirpath, info->filename);
-#else
-            dgl_string_append(&tmp_builder, "%s/%s", result->dirpath, info->filename);
-#endif
+            dgl_string_append(&tmp_builder, "%s%s", result->dirpath, info->filename);
+
             char *tmp_filepath = dgl_string_c_style(&tmp_builder);
             info->size = sdl_file_size(tmp_filepath);
 
@@ -422,7 +446,7 @@ ZHC_GET_DATA_BASE_PATH(sdl_internal_storage_path)
     if(path)
     {
         result = true;
-#ifdef _WIN32
+#if DGL_OS_WINDOWS
         dgl_string_append(builder, "%s\\", path);
 #else
         dgl_string_append(builder, "%s/", path);
@@ -451,7 +475,7 @@ ZHC_GET_USER_DATA_BASE_PATH(sdl_external_storage_path)
     if(path)
     {
         result = true;
-#ifdef _WIN32
+#ifdef DGL_OS_WINDOWS
         dgl_string_append(builder, "%s\\", path);
 #else
         dgl_string_append(builder, "%s/", path);
