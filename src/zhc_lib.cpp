@@ -69,21 +69,29 @@ read_active_file(DGL_Mem_Arena *arena, Zhc_File_Group *group, Zhc_File_Info *inf
 
     if(group)
     {
-        result.info = info;
-        result.data = dgl_mem_arena_push_array(arena, uint8, result.info->size);
-
-        DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(arena);
+        if(info->size < ZHC_MAX_FILESIZE)
         {
-            DGL_String_Builder temp_builder = dgl_string_builder_init(temp.arena, 128);
-            dgl_string_append(&temp_builder, "%s%s", group->dirpath, result.info->filename);
+            result.info = info;
+            result.data = dgl_mem_arena_push_array(arena, uint8, result.info->size);
 
-            char *filepath = dgl_string_c_style(&temp_builder);
-            LOG_DEBUG("Loading file %s", filepath);
-            platform.read_entire_file(filepath, result.data, result.info->size);
+            DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(arena);
+            {
+                DGL_String_Builder temp_builder = dgl_string_builder_init(temp.arena, 128);
+                dgl_string_append(&temp_builder, "%s%s", group->dirpath, result.info->filename);
+
+                char *filepath = dgl_string_c_style(&temp_builder);
+                LOG_DEBUG("Loading file %s", filepath);
+                platform.read_entire_file(filepath, result.data, result.info->size);
+            }
+            dgl_mem_arena_end_temp(temp);
+            result.hash = HASH_OFFSET_BASIS;
+            hash(&result.hash, result.data, result.info->size);
         }
-        dgl_mem_arena_end_temp(temp);
-        result.hash = HASH_OFFSET_BASIS;
-        hash(&result.hash, result.data, result.info->size);
+        else
+        {
+            // TODO(dgl): create popup error window.
+            LOG("Could not load file %s. Filesize (%zu) is bigger than ZHC_MAX_FILESIZE (%zu).", info->filename, info->size, ZHC_MAX_FILESIZE);
+        }
     }
     return(result);
 }
