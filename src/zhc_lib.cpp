@@ -1,10 +1,7 @@
 /*
     NOTE(dgl): TODOs
-    - Socket for accepting clients
-    - send data to clients
     - dynamic folder (where we search for the files) + folder dialog
     - config file
-    - segfault if window too small
 */
 
 #define STB_TRUETYPE_IMPLEMENTATION  // force following include to generate implementation
@@ -357,62 +354,60 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         {
             state->io_update_timeout = 0;
             net_send_hash_request(&state->net_socket, &state->net_socket.address);
+        }
 
-            // NOTE(dgl): On the client side we don't care about the address. There is currently only
-            // one server. This is just to fullfil the api specification. Maybe we will need it later,
-            // or we will fill it in the platform layer to have a more complete implementation. But for
-            // now this is not implemented on the client platform layer.
-            Net_Msg_Header header = {};
-            Zhc_Net_IP _address = {};
 
-            // TODO(dgl): @@important The receive_call is blocking. This is why we only check for incoming messages
-            // after we sent the data. In the future we will switch to non blocking calls @@cleanup
-            net_recv_header(&state->net_socket, &_address, &header);
+        // NOTE(dgl): On the client side we don't care about the address. There is currently only
+        // one server. This is just to fullfil the api specification. Maybe we will need it later,
+        // or we will fill it in the platform layer to have a more complete implementation. But for
+        // now this is not implemented on the client platform layer.
+        Net_Msg_Header header = {};
+        Zhc_Net_IP _address = {};
 
-            if(header.type > 0)
+        net_recv_header(&state->net_socket, &_address, &header);
+        if(header.type > 0)
+        {
+            // TODO(dgl): handle requests with the command buffer
+            switch(header.type)
             {
-                // TODO(dgl): handle requests with the command buffer
-                switch(header.type)
+                case Net_Msg_Header_Hash_Res:
                 {
-                    case Net_Msg_Header_Hash_Res:
+                    if(header.size > 0)
                     {
-                        if(header.size > 0)
+                        uint32 hash = 0;
+                        net_recv_data(&state->net_socket, &_address, &hash, sizeof(hash));
+
+                        if(hash != state->active_file.hash)
                         {
-                            uint32 hash = 0;
-                            net_recv_data(&state->net_socket, &_address, &hash, sizeof(hash));
-
-                            if(hash != state->active_file.hash)
-                            {
-                                LOG_DEBUG("Hash mismatch - remote: %u, local: %u", hash, state->active_file.hash);
-                                net_send_data_request(&state->net_socket, &state->net_socket.address);
-                            }
+                            LOG_DEBUG("Hash mismatch - remote: %u, local: %u", hash, state->active_file.hash);
+                            net_send_data_request(&state->net_socket, &state->net_socket.address);
                         }
-                    } break;
-                    case Net_Msg_Header_Data_Res:
-                    {
-                        if(header.size > 0)
-                        {
-                            // NOTE(dgl): cleanup IO arena
-                            state->active_file = {};
-                            dgl_mem_arena_free_all(&state->io_arena);
-
-                            // NOTE(dgl): push new data into the arena
-                            Zhc_File_Info *info = dgl_mem_arena_push_struct(&state->io_arena, Zhc_File_Info);
-                            info->filename = "\0";
-                            info->size = header.size;
-                            uint8 *data = dgl_mem_arena_push_array(&state->io_arena, uint8, info->size);
-                            net_recv_data(&state->net_socket, &_address, data, info->size);
-
-                            state->active_file.info = info;
-                            state->active_file.data = data;
-                            state->active_file.hash = HASH_OFFSET_BASIS;
-                            hash(&state->active_file.hash, state->active_file.data, state->active_file.info->size);
-                        }
-                    } break;
-                    default:
-                    {
-                        LOG_DEBUG("Unhandled network message with type %d (version %u)", header.type, header.version);
                     }
+                } break;
+                case Net_Msg_Header_Data_Res:
+                {
+                    if(header.size > 0)
+                    {
+                        // NOTE(dgl): cleanup IO arena
+                        state->active_file = {};
+                        dgl_mem_arena_free_all(&state->io_arena);
+
+                        // NOTE(dgl): push new data into the arena
+                        Zhc_File_Info *info = dgl_mem_arena_push_struct(&state->io_arena, Zhc_File_Info);
+                        info->filename = "\0";
+                        info->size = header.size;
+                        uint8 *data = dgl_mem_arena_push_array(&state->io_arena, uint8, info->size);
+                        net_recv_data(&state->net_socket, &_address, data, info->size);
+
+                        state->active_file.info = info;
+                        state->active_file.data = data;
+                        state->active_file.hash = HASH_OFFSET_BASIS;
+                        hash(&state->active_file.hash, state->active_file.data, state->active_file.info->size);
+                    }
+                } break;
+                default:
+                {
+                    LOG_DEBUG("Unhandled network message with type %d (version %u)", header.type, header.version);
                 }
             }
         }

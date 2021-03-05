@@ -3,6 +3,7 @@
 
 struct SDL_Client_Socket
 {
+    SDLNet_SocketSet set;
     TCPsocket socket;
 };
 
@@ -185,15 +186,12 @@ ZHC_RECEIVE_DATA(sdl_net_server_receive_data)
                 }
             }
         }
+
+        result = ready_count > 0;
     }
     else if(ready_count < 0)
     {
         LOG("Checking ready sockets failed with: %s", SDLNet_GetError());
-    }
-
-    if(ready_count > 0)
-    {
-        result = true;
     }
 
     return(result);
@@ -257,35 +255,53 @@ ZHC_RECEIVE_DATA(sdl_net_client_receive_data)
     bool32 result = false;
     SDL_Client_Socket *platform = (SDL_Client_Socket *)socket->platform;
 
-    if(peer_address->port > 0 && peer_address->host > 0)
+    int32 ready_count = SDLNet_CheckSockets(platform->set, 0);
+    if(ready_count > 0)
     {
-        IPaddress *real_peer = SDLNet_TCP_GetPeerAddress(platform->socket);
-        if(is_ip_address(*peer_address, *real_peer))
+        // NOTE(dgl): handle new incoming connecitons
+        if(SDLNet_SocketReady(platform->socket))
         {
+            --ready_count;
+
+            if(peer_address->port > 0 && peer_address->host > 0)
+            {
+                // NOTE(dgl): early return if the ip address is different than the peers
+                // address
+                IPaddress *real_peer = SDLNet_TCP_GetPeerAddress(platform->socket);
+                if(!is_ip_address(*peer_address, *real_peer))
+                {
+                    LOG_DEBUG("Ip address of peer does not match");
+                    result = true;
+                    return(result);
+                }
+            }
+
             int32 success = SDLNet_TCP_Recv(platform->socket, buffer, dgl_safe_size_to_int32(buffer_size));
             if(success <= 0)
             {
+                LOG_DEBUG("Failed to receive data with %s", SDLNet_GetError());
                 SDLNet_TCP_Close(platform->socket);
                 socket->no_error = false;
             }
+            else
+            {
+                LOG_DEBUG("Receiving %d bytes", success);
+            }
         }
+
+        result = ready_count > 0;
     }
-    else
+    else if(ready_count < 0)
     {
-        int32 success = SDLNet_TCP_Recv(platform->socket, buffer, dgl_safe_size_to_int32(buffer_size));
-        if(success <= 0)
-        {
-            SDLNet_TCP_Close(platform->socket);
-            socket->no_error = false;
-        }
-        else
-        {
-            LOG_DEBUG("Receiving %d bytes", success);
-        }
+        LOG("Checking ready sockets failed with: %s", SDLNet_GetError());
     }
+
     return(result);
 }
 
+// NOTE(dgl): I was not able to set the sockets to O_NONBLOCK.
+// therefore we have to create a socket set and check if data
+// is available. I guess this is overall the better solution.
 ZHC_SETUP_SOCKET(sdl_net_client_setup_socket)
 {
     IPaddress ip = {};
@@ -296,18 +312,28 @@ ZHC_SETUP_SOCKET(sdl_net_client_setup_socket)
     ip.port = socket->address.port;
 #endif
 
-    TCPsocket tcpsock = SDLNet_TCP_Open(&ip);
-    if(tcpsock)
+    SDLNet_SocketSet set = SDLNet_AllocSocketSet(1);
+    if(set)
     {
-        SDL_Client_Socket *client_socket = dgl_mem_arena_push_struct(arena, SDL_Client_Socket);
-        client_socket->socket = tcpsock;
+        TCPsocket tcpsock = SDLNet_TCP_Open(&ip);
+        if(tcpsock)
+        {
+            SDLNet_TCP_AddSocket(set, tcpsock);
+            SDL_Client_Socket *client_socket = dgl_mem_arena_push_struct(arena, SDL_Client_Socket);
+            client_socket->socket = tcpsock;
+            client_socket->set = set;
 
-        socket->platform = client_socket;
-        socket->no_error = true;
+            socket->platform = client_socket;
+            socket->no_error = true;
+        }
+        else
+        {
+            LOG("Opening TCP socket failed with: %s", SDLNet_GetError());
+        }
     }
     else
     {
-        LOG("Opening TCP socket failed with: %s", SDLNet_GetError());
+        LOG("Allocating socket failed with: %s", SDLNet_GetError());
     }
 }
 
