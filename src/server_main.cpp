@@ -5,6 +5,7 @@
 
 #ifdef __ANDROID__
 #include <SDL.h>
+#include <SDL_net.h>
 #else
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_net.h>
@@ -111,7 +112,31 @@ int main(int argc, char *argv[])
                 switch(event.type)
                 {
                     case SDL_QUIT: { global_running = false; } break;
-                    case SDL_TEXTINPUT: { zhc_input_text(&input, event.text.text); } break;
+#ifdef __ANDROID__
+                    case SDL_FINGERMOTION:
+                    {
+                        int32 x = dgl_round_real32_to_int32(cast(real32)back_buffer.width * event.tfinger.x);
+                        int32 y = dgl_round_real32_to_int32(cast(real32)back_buffer.height * event.tfinger.y);
+                        zhc_input_mousemove(&input, v2(x, y));
+                    } break;
+                    case SDL_FINGERDOWN:
+                    case SDL_FINGERUP:
+                    {
+                        bool32 down = (event.type == SDL_FINGERDOWN);
+                        zhc_input_mousebutton(&input, Zhc_Mouse_Button_Left, down);
+                        int32 x = dgl_round_real32_to_int32(cast(real32)back_buffer.width * event.tfinger.x);
+                        int32 y = dgl_round_real32_to_int32(cast(real32)back_buffer.height * event.tfinger.y);
+                        zhc_input_mousemove(&input, v2(x, y));
+
+                        if(!down)
+                        {
+                            // NOTE(dgl): we move the cursor position to 0,0 to reset the "hot" element
+                            // IMPORTANT: the mouse click has to be longer than 1 frame. Otherwise it is not
+                            // recognized. On a high framerate the user experience should be fine.
+                            zhc_input_mousemove(&input, v2(0, 0));
+                        }
+                    } break;
+#else
                     case SDL_MOUSEBUTTONDOWN:
                     case SDL_MOUSEBUTTONUP:
                     {
@@ -138,10 +163,8 @@ int main(int argc, char *argv[])
                     {
                         zhc_input_mousemove(&input, v2(event.motion.x, event.motion.y));
                     } break;
-                    case SDL_FINGERMOTION:
-                    case SDL_FINGERDOWN:
-                    case SDL_FINGERUP:
-
+#endif
+                    case SDL_TEXTINPUT: { zhc_input_text(&input, event.text.text); } break;
                     case SDL_KEYDOWN:
                     case SDL_KEYUP:
                     {

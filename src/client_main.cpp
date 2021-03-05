@@ -5,6 +5,7 @@
 
 #ifdef __ANDROID__
 #include <SDL.h>
+#include <SDL_net.h>
 #else
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_net.h>
@@ -44,7 +45,7 @@ int main(int argc, char *argv[])
     SDL_DisableScreenSaver();
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
-    uint64 target_fps = 30;
+    uint64 target_fps = 60;
     uint64 target_frame_ticks = (SDL_GetPerformanceFrequency() / target_fps);
     real32 target_ms_per_frame = (1.0f / cast(real32)target_fps) * 1000.0f;
 
@@ -104,6 +105,31 @@ int main(int argc, char *argv[])
                 switch(event.type)
                 {
                     case SDL_QUIT: { global_running = false; } break;
+#ifdef __ANDROID__
+                    case SDL_FINGERMOTION:
+                    {
+                        int32 x = dgl_round_real32_to_int32(cast(real32)back_buffer.width * event.tfinger.x);
+                        int32 y = dgl_round_real32_to_int32(cast(real32)back_buffer.height * event.tfinger.y);
+                        zhc_input_mousemove(&input, v2(x, y));
+                    } break;
+                    case SDL_FINGERDOWN:
+                    case SDL_FINGERUP:
+                    {
+                        bool32 down = (event.type == SDL_FINGERDOWN);
+                        zhc_input_mousebutton(&input, Zhc_Mouse_Button_Left, down);
+                        int32 x = dgl_round_real32_to_int32(cast(real32)back_buffer.width * event.tfinger.x);
+                        int32 y = dgl_round_real32_to_int32(cast(real32)back_buffer.height * event.tfinger.y);
+                        zhc_input_mousemove(&input, v2(x, y));
+
+                        if(!down)
+                        {
+                            // NOTE(dgl): we move the cursor position to 0,0 to reset the "hot" element
+                            // IMPORTANT: the mouse click has to be longer than 1 frame. Otherwise it is not
+                            // recognized. On a high framerate the user experience should be fine.
+                            zhc_input_mousemove(&input, v2(0, 0));
+                        }
+                    } break;
+#else
                     case SDL_MOUSEBUTTONDOWN:
                     case SDL_MOUSEBUTTONUP:
                     {
@@ -129,10 +155,9 @@ int main(int argc, char *argv[])
                     case SDL_MOUSEMOTION:
                     {
                         zhc_input_mousemove(&input, v2(event.motion.x, event.motion.y));
+                        LOG_DEBUG("Mousemotion x %d, y %d", event.motion.x, event.motion.y);
                     } break;
-                    case SDL_FINGERMOTION:
-                    case SDL_FINGERDOWN:
-                    case SDL_FINGERUP:
+#endif
                     default: {}
                 }
             }
@@ -150,7 +175,6 @@ int main(int argc, char *argv[])
             // add render cache to only render rects that have changed
             zhc_update_and_render_client(&memory, &input, &back_buffer);
             SDL_UpdateWindowSurface(window);
-
 
             uint64 work_counter = SDL_GetPerformanceCounter();
             uint64 work_ticks_elapsed = work_counter - last_counter;
@@ -175,7 +199,7 @@ int main(int argc, char *argv[])
             uint64 counter_elapsed = end_counter - last_counter;
             last_frame_in_ms = (((1000.0f * (real32)counter_elapsed) / (real32)perf_count_frequency));
 
-#if 0
+#if 1
             real32 fps = (real32)perf_count_frequency / (real32)counter_elapsed;
 
             LOG("%.02f ms/f, %.02ff/s", last_frame_in_ms, fps);

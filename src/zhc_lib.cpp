@@ -423,7 +423,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     else
     {
         // TODO(dgl): close socket if there is any error
-        state->net_socket = net_init_socket(&state->permanent_arena, "127.0.0.1", 1337);
+        state->net_socket = net_init_socket(&state->permanent_arena, "192.168.101.124", 1337);
     }
 
     // NOTE(dgl): put this at the end of the frame

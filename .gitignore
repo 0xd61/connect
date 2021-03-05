@@ -32,4 +32,5 @@
 *.app
 
 SDL2-*
+SDL2_*
 /build/
