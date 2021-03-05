@@ -178,7 +178,7 @@ dgl__get_ms_elapsed(struct timespec start, struct timespec end)
 
 DGL_DEF inline dglth_bool32 dgl_test_result()
 {
-    printf("Executed %d test(s) in %f ms - Errors: %d\n", dgl__test_context.test_count, dgl__test_context.total_time_in_ms, dgl__test_context.error_count);
+    printf("Executed %d test(s) in %f ms - Errors: %d\n\n", dgl__test_context.test_count, dgl__test_context.total_time_in_ms, dgl__test_context.error_count);
     return(dgl__test_context.error_count == 0);
 }
 

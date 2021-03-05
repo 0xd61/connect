@@ -34,10 +34,10 @@ parse_version(char *string)
                 result |= (cast(uint32)number << 16);
             }
             // NOTE(dgl): minor and patch
-            else
+            else if(segment == 1)
             {
                 assert(number <= 0xFF && number >= 0, "Invalid version segment (cannot be bigger than 255)");
-                result |= (cast(uint32)number << (segment * 8));
+                result |= (cast(uint32)number << 8);
             }
 
             ++segment;
@@ -51,6 +51,20 @@ parse_version(char *string)
         ++string;
     }
     assert(segment == 2, "Failed parsing the version number (too many segments)");
+    assert(number <= 0xFF && number >= 0, "Invalid version segment (cannot be bigger than 255)");
+    result |= cast(uint32)number;
+    
+    return(result);
+}
+
+//
+// NOTE(dgl): Intrinsics
+//
+
+inline int32
+bits_required(uint64 value)
+{
+    int32 result = 64 - __builtin_clzll(value);
     return(result);
 }
 
