@@ -2,6 +2,7 @@
     NOTE(dgl): TODOs
     - dynamic folder (where we search for the files) + folder dialog
     - config file
+    - Some kind of overflow in stbtt_BakeFontBitmap for (108px size fonts)
 */
 
 #define STB_TRUETYPE_IMPLEMENTATION  // force following include to generate implementation
@@ -154,7 +155,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
     // NOTE(dgl): draw backplate
     V4 screen = rect(0, 0, ui_ctx->window.w, ui_ctx->window.h);
-    ren_draw_rectangle(ui_ctx->buffer, screen, ui_ctx->bg_color);
+    ren_draw_rectangle(ui_ctx->buffer, screen, ui_ctx->theme.bg_color);
 
     // NOTE(dgl): draw file, if it is available
     if(state->active_file.data)
@@ -164,16 +165,16 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
     ui_menu(ui_ctx,
             rect(ui_ctx->window.w - 300, 0, 300, 100),
-            color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.025f),
-            color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.5f));
+            color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.2f),
+            color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.2f));
 
     // TODO(dgl): use command buffer instead of desired file etc..
     int32 button_w = 100;
     int32 button_h = 400;
     if(ui_button(ui_ctx,
                  rect(ui_ctx->window.w - button_w, (ui_ctx->window.h - button_h)/2, button_w, button_h),
-                 color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.025f),
-                 color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.5f),
+                 color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.2f),
+                 color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.2f),
                  ui_ctx->system_font, ">") ||
        input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Right) ||
        input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Enter) ||
@@ -187,8 +188,8 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
     if(ui_button(ui_ctx,
                  rect(0, (ui_ctx->window.h - button_h)/2, button_w, button_h),
-                 color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.025f),
-                 color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.5f),
+                 color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.2f),
+                 color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.2f),
                  ui_ctx->system_font, "<") ||
        input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Left))
     {
@@ -232,9 +233,8 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     // NOTE(dgl): update font size, if requested
     if(ui_ctx->desired_text_font_size != ui_ctx->text_font->size)
     {
-        LOG_DEBUG("Resizing font from %f to %f", ui_ctx->text_font->size, ui_ctx->desired_text_font_size);
-        dgl_mem_arena_free_all(&ui_ctx->dyn_font_arena);
-        ui_ctx->text_font = initialize_font(&ui_ctx->dyn_font_arena, ui_ctx->text_font->ttf_buffer, ui_ctx->desired_text_font_size);
+        LOG_DEBUG("Resizing font from %d to %d", ui_ctx->text_font->size, ui_ctx->desired_text_font_size);
+        ui_resize_font(&ui_ctx->font_arena, ui_ctx->text_font, ui_ctx->desired_text_font_size);
     }
 
     // NOTE(dgl): update active file if requested
@@ -331,7 +331,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
     // NOTE(dgl): draw backplate
     V4 screen = rect(0, 0, ui_ctx->window.w, ui_ctx->window.h);
-    ren_draw_rectangle(ui_ctx->buffer, screen, ui_ctx->bg_color);
+    ren_draw_rectangle(ui_ctx->buffer, screen, ui_ctx->theme.bg_color);
 
     // NOTE(dgl): draw file, if it is available
     if(state->active_file.data)
@@ -341,15 +341,14 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
     ui_menu(ui_ctx,
             rect(ui_ctx->window.w - 300, 0, 300, 100),
-            color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.025f),
-            color(ui_ctx->fg_color.r, ui_ctx->fg_color.g, ui_ctx->fg_color.b, 0.5f));
+            color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.025f),
+            color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.5f));
 
     // NOTE(dgl): update font size, if requested
     if(ui_ctx->desired_text_font_size != ui_ctx->text_font->size)
     {
         LOG_DEBUG("Resizing font from %f to %f", ui_ctx->text_font->size, ui_ctx->desired_text_font_size);
-        dgl_mem_arena_free_all(&ui_ctx->dyn_font_arena);
-        ui_ctx->text_font = initialize_font(&ui_ctx->dyn_font_arena, ui_ctx->text_font->ttf_buffer, ui_ctx->desired_text_font_size);
+        ui_resize_font(&ui_ctx->font_arena, ui_ctx->text_font, ui_ctx->desired_text_font_size);
     }
 
     // TODO(dgl): blocks until timeout is hit or connection is
@@ -423,7 +422,8 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     else
     {
         // TODO(dgl): close socket if there is any error
-        state->net_socket = net_init_socket(&state->permanent_arena, "192.168.101.124", 1337);
+        //state->net_socket = net_init_socket(&state->permanent_arena, "192.168.101.124", 1337);
+        state->net_socket = net_init_socket(&state->permanent_arena, "127.0.0.1", 1337);
     }
 
     // NOTE(dgl): put this at the end of the frame

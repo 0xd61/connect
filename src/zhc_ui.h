@@ -1,13 +1,35 @@
 #ifndef ZHC_UI
 #define ZHC_UI
 
+// TODO(dgl): we have a bug in stbtt_BakeFontBitmap with font size 108px
+#define MAX_FONT_SIZE 104
+
 typedef uint32 Element_ID;
+
+enum Screen_Size
+{
+    Screen_Uninitialized = 0,
+    Screen_Size_XS = 640,
+    Screen_Size_SM = 768,
+    Screen_Size_MD = 1024,
+    Screen_Size_LG = 1280,
+    Screen_Size_XL = 1536
+};
+
+struct Theme
+{
+    Screen_Size type;
+    int32 font_size;
+    V2 menu_size;
+    V4 fg_color;
+    V4 bg_color;
+};
 
 struct Font
 {
     uint8 *ttf_buffer;
-    Zhc_Image *bitmap;
-    real32 size;
+    Zhc_Image bitmap;
+    int32 size; /* size in pixels */
     real32 linegap;
     real32 height;
     stbtt_fontinfo stbfont;
@@ -36,15 +58,12 @@ struct Imui_Context
     Element_ID top_most_hot;
     bool32 hot_updated;
 
-
-    Font *system_font;
-
-    V4 fg_color;
-    V4 bg_color;
+    Theme theme;
 
     // NOTE(dgl): to be able to reset the font
     // and have more safety, if we overflow the arena.
-    DGL_Mem_Arena dyn_font_arena;
+    DGL_Mem_Arena font_arena;
+    Font *system_font;
     Font *text_font;
 
     Zhc_Input *input;
@@ -53,7 +72,7 @@ struct Imui_Context
     Stack(Element_ID) id_stack;
     Stack(Element_State) element_state_list;
 
-    real32 desired_text_font_size;
+    int32 desired_text_font_size; /* in pixels */
 };
 
 #endif // ZHC_UI

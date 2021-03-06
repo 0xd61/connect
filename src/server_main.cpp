@@ -69,7 +69,7 @@ int main(int argc, char *argv[])
     void *base_address = 0;
 #endif
 
-    usize permanent_memory_size = megabytes(32);
+    usize permanent_memory_size = megabytes(64);
     usize transient_memory_size = megabytes(16);
 
     // NOTE(dgl): Must be cleared to zero!!

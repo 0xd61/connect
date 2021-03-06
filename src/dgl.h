@@ -575,6 +575,7 @@ dgl_mem_arena_resize_align(DGL_Mem_Arena *arena, uint8 *current_base, DGL_Mem_In
     }
     else if(arena->base + arena->prev_offset == current_base)
     {
+        dgl_assert((arena->prev_offset + new_size) <= arena->size, "Arena overflow. Cannot allocate new size");
         arena->curr_offset = arena->prev_offset + new_size;
         if (new_size > current_size)
         {
