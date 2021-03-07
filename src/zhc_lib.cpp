@@ -382,7 +382,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
                     if(header.size > 0)
                     {
                         uint32 hash = 0;
-                        net_recv_data(&state->net_socket, &_address, &hash, sizeof(hash));
+                        net_recv_hash(&state->net_socket, &_address, &hash);
 
                         if(hash != state->active_file.hash)
                         {

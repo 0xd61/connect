@@ -170,6 +170,27 @@ serialize_header(Bitstream *buffer, Net_Msg_Header *header)
     return(result);
 }
 
+internal usize
+serialize_hash(Bitstream *buffer, uint32 *hash)
+{
+    usize result = 0;
+    if(buffer->is_writing)
+    {
+        stream_write_bits(buffer, *hash, 32);
+        stream_flush(buffer);
+    }
+    else if(buffer->is_reading)
+    {
+        *hash = stream_read_bits(buffer, 32);
+    }
+    else
+    {
+        assert(false, "Bitstream buffer must be reading or writing");
+    }
+    result = buffer->index * sizeof(*buffer->data);
+    return(result);
+}
+
 internal Zhc_Net_Socket
 net_init_socket(DGL_Mem_Arena *arena, char *ip, uint16 port)
 {
@@ -263,7 +284,31 @@ internal void
 net_send_hash_response(Zhc_Net_Socket *socket, Zhc_Net_IP *destination, uint32 hash)
 {
     net_send_header(socket, destination, Net_Msg_Header_Hash_Res, sizeof(hash));
-    platform.send_data(socket, destination, &hash, sizeof(hash));
+
+    uint8 memory[sizeof(hash)] = {};
+    Bitstream writer = stream_writer_init(memory, array_count(memory));
+
+    usize count = serialize_hash(&writer, &hash);
+
+    assert(count == 4, "Failed to serialize hash");
+    platform.send_data(socket, destination, memory, count);
+}
+
+internal bool32
+net_recv_hash(Zhc_Net_Socket *socket, Zhc_Net_IP *source, uint32 *hash)
+{
+    bool32 result = false;
+
+    uint8 memory[sizeof(*hash)] = {};
+
+    result = platform.receive_data(socket, source, memory, sizeof(*hash));
+
+    Bitstream reader = stream_reader_init(memory, array_count(memory));
+    usize res = serialize_hash(&reader, hash);
+
+    assert(sizeof(*hash) == res, "Failed to serialize");
+
+    return(result);
 }
 
 internal void
