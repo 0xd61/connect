@@ -2,6 +2,8 @@
     NOTE(dgl): TODOs
     - dynamic folder (where we search for the files) + folder dialog
     - config file
+    - responsive ui
+    - button icons
     - Some kind of overflow in stbtt_BakeFontBitmap for (108px size fonts)
 */
 
