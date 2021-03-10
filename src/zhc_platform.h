@@ -213,7 +213,7 @@ struct Zhc_Net_IP
             };
             uint16 port;
         };
-        bool32 not_null; /* NOTE(dgl): to make checks if noting is provider easier */
+        bool32 not_null; /* NOTE(dgl): to make checks if is empty easier */
     };
 };
 
