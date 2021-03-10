@@ -169,7 +169,7 @@ ZHC_RECEIVE_DATA(sdl_net_server_receive_data)
                     {
                         // NOTE(dgl): if no address was provided we return the peer address
                         // to the caller function
-                        if(peer_address->port == 0 && peer_address->host == 0)
+                        if(!peer_address->not_null)
                         {
                             peer_address->host = client->peer.host;
 #if SDL_BYTEORDER == SDL_LIL_ENDIAN
@@ -263,7 +263,7 @@ ZHC_RECEIVE_DATA(sdl_net_client_receive_data)
         {
             --ready_count;
 
-            if(peer_address->port > 0 && peer_address->host > 0)
+            if(peer_address->not_null)
             {
                 // NOTE(dgl): early return if the ip address is different than the peers
                 // address

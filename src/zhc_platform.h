@@ -194,7 +194,9 @@ struct Zhc_File_Group
     int32 count;
     Zhc_File_Info *first_file_info;
     DGL_Mem_Arena *arena;
-    // TODO(dgl): ensure it ends with a \ or /
+    // TODO(dgl): not needed. Will always be stored somewhere else.
+    // and with the new file handles, we do not neet it to read the
+    // file.
     char *dirpath;
 };
 
@@ -202,10 +204,17 @@ struct Zhc_Net_IP
 {
     union
     {
-        uint8 ip[4];
-        uint32 host;
+        struct
+        {
+            union
+            {
+                uint8 ip[4];
+                uint32 host;
+            };
+            uint16 port;
+        };
+        bool32 not_null; /* NOTE(dgl): to make checks if noting is provider easier */
     };
-    uint16 port;
 };
 
 struct Zhc_Net_Socket
@@ -216,6 +225,9 @@ struct Zhc_Net_Socket
 };
 
 // NOTE(dgl): Global api. Use separate api file later...
+
+// TODO(dgl): ZHC_OPEN_FILE
+// TODO(dgl): ZHC_CLOSE_FILE
 #define ZHC_GET_DIRECTORY_FILENAMES(name) Zhc_File_Group * name(DGL_Mem_Arena *arena, char *path)
 typedef ZHC_GET_DIRECTORY_FILENAMES(Zhc_Get_Directory_Filenames);
 #define ZHC_FILE_SIZE(name) usize name(Zhc_File_Handle *handle)
@@ -228,12 +240,9 @@ typedef ZHC_GET_USER_DATA_BASE_PATH(Zhc_Get_User_Data_Base_Path);
 typedef ZHC_GET_DATA_BASE_PATH(Zhc_Get_Data_Base_Path);
 #define ZHC_OPEN_SOCKET(name) void name(DGL_Mem_Arena *arena, Zhc_Net_Socket *socket)
 typedef ZHC_OPEN_SOCKET(Zhc_Open_Socket);
-// NOTE(dgl): returns false if no data is available. If IP is null, we return the message that is available.
-// If peer ip is not null, we put the message from this sender into the buffer, if available.
-// The api must somehow provide the peer_ip to the caller.
-// TODO(dgl): how do we do this properly. The best thing would be to return the client_ip. But what do we return if no
-// data was available? Another possibility would be to fill the peer_address, if not provided. I think this would be the better
-// approach.
+
+// TODO(dgl): return peer_address instead of bool32. If there was no data available we could
+// return a 0 address (host and port 0).
 #define ZHC_RECEIVE_DATA(name) bool32 name(Zhc_Net_Socket *socket, Zhc_Net_IP *peer_address, void *buffer, usize buffer_size)
 typedef ZHC_RECEIVE_DATA(Zhc_Receive_Data);
 #define ZHC_SEND_DATA(name) void name(Zhc_Net_Socket *socket, Zhc_Net_IP *target_address, void *buffer, usize buffer_size)
