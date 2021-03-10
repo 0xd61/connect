@@ -10,7 +10,7 @@ typedef int32 Asset_ID;
 
 enum Asset_Type
 {
-    Asset_Type_Text,
+    Asset_Type_Data,
     Asset_Type_Font,
     Asset_Type_Image
 };
@@ -40,7 +40,7 @@ struct Loaded_Image
     uint32 *pixels;
 };
 
-struct Loaded_Text
+struct Loaded_Data
 {
     usize size;
     uint8 *memory;
@@ -58,13 +58,21 @@ struct Asset_Memory_Header
     {
         Loaded_Font font;
         Loaded_Image image;
-        Loaded_Text text;
+        Loaded_Data data;
     };
 };
 
 struct Asset
 {
+    Asset_ID file_index;
     Asset_Memory_Header *header;
+};
+
+struct Asset_File
+{
+    Asset_ID asset;
+    Zhc_File_Handle handle;
+    usize size;
 };
 
 struct Zhc_Assets
@@ -77,6 +85,9 @@ struct Zhc_Assets
 
     Asset_Memory_Header header_sentinel;
     Asset_Memory_Block memory_sentinel;
+
+    int32 file_count;
+    Asset_File *files;
 
     int32 asset_count;
     // NOTE(dgl): shuold be the last allocation in the arena.

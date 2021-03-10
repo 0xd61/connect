@@ -170,6 +170,12 @@ zhc_input_reset(Zhc_Input *input)
     input->key_pressed = 0;
 }
 
+struct Zhc_File_Handle
+{
+    bool32 no_error;
+    void *platform;
+};
+
 // TODO(dgl): instead of loading a file by filename and path
 // we could use the filehandle. Then we could use the same handle type
 // for network and filesystem files.
@@ -180,6 +186,7 @@ struct Zhc_File_Info
     // NOTE(dgl): only filename, without path
     char *filename;
     usize size;
+    Zhc_File_Handle handle;
 };
 
 struct Zhc_File_Group
@@ -211,16 +218,16 @@ struct Zhc_Net_Socket
 // NOTE(dgl): Global api. Use separate api file later...
 #define ZHC_GET_DIRECTORY_FILENAMES(name) Zhc_File_Group * name(DGL_Mem_Arena *arena, char *path)
 typedef ZHC_GET_DIRECTORY_FILENAMES(Zhc_Get_Directory_Filenames);
-#define ZHC_FILE_SIZE(name) usize name(char *filename)
+#define ZHC_FILE_SIZE(name) usize name(Zhc_File_Handle *handle)
 typedef ZHC_FILE_SIZE(Zhc_File_Size);
-#define ZHC_READ_ENTIRE_FILE(name) bool32 name(char *filename, uint8 *buffer, usize buffer_size)
+#define ZHC_READ_ENTIRE_FILE(name) void name(Zhc_File_Handle *handle, uint8 *buffer, usize buffer_size)
 typedef ZHC_READ_ENTIRE_FILE(Zhc_Read_Entire_File);
 #define ZHC_GET_USER_DATA_BASE_PATH(name) bool32 name(DGL_String_Builder *builder)
 typedef ZHC_GET_USER_DATA_BASE_PATH(Zhc_Get_User_Data_Base_Path);
 #define ZHC_GET_DATA_BASE_PATH(name) bool32 name(DGL_String_Builder *builder)
 typedef ZHC_GET_DATA_BASE_PATH(Zhc_Get_Data_Base_Path);
-#define ZHC_SETUP_SOCKET(name) void name(DGL_Mem_Arena *arena, Zhc_Net_Socket *socket)
-typedef ZHC_SETUP_SOCKET(Zhc_Setup_Socket);
+#define ZHC_OPEN_SOCKET(name) void name(DGL_Mem_Arena *arena, Zhc_Net_Socket *socket)
+typedef ZHC_OPEN_SOCKET(Zhc_Open_Socket);
 // NOTE(dgl): returns false if no data is available. If IP is null, we return the message that is available.
 // If peer ip is not null, we put the message from this sender into the buffer, if available.
 // The api must somehow provide the peer_ip to the caller.
@@ -239,7 +246,7 @@ struct Zhc_Platform_Api
     Zhc_Read_Entire_File *read_entire_file;
     Zhc_Get_User_Data_Base_Path *get_user_data_base_path;
     Zhc_Get_Data_Base_Path *get_data_base_path;
-    Zhc_Setup_Socket *setup_socket;
+    Zhc_Open_Socket *open_socket;
     Zhc_Receive_Data *receive_data;
     Zhc_Send_Data *send_data;
 };

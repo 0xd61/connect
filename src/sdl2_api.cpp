@@ -197,7 +197,7 @@ ZHC_RECEIVE_DATA(sdl_net_server_receive_data)
     return(result);
 }
 
-ZHC_SETUP_SOCKET(sdl_net_server_setup_socket_set)
+ZHC_OPEN_SOCKET(sdl_net_server_setup_socket_set)
 {
     IPaddress ip = {};
     ip.host = socket->address.host;
@@ -302,7 +302,7 @@ ZHC_RECEIVE_DATA(sdl_net_client_receive_data)
 // NOTE(dgl): I was not able to set the sockets to O_NONBLOCK.
 // therefore we have to create a socket set and check if data
 // is available. I guess this is overall the better solution.
-ZHC_SETUP_SOCKET(sdl_net_client_setup_socket)
+ZHC_OPEN_SOCKET(sdl_net_client_setup_socket)
 {
     IPaddress ip = {};
     ip.host = socket->address.host;
@@ -340,17 +340,16 @@ ZHC_SETUP_SOCKET(sdl_net_client_setup_socket)
 ZHC_FILE_SIZE(sdl_file_size)
 {
     usize result = 0;
-    SDL_RWops *io = SDL_RWFromFile(filename, "rb");
-    if(io != 0)
+    if(handle->no_error)
     {
+        SDL_RWops *io = cast(SDL_RWops *)handle->platform;
         int64 size = SDL_RWsize(io);
-        assert(size > 0, "Failed to find file");
+        if(size < 0)
+        {
+            handle->no_error = false;
+            LOG_DEBUG("Failed to find filesize");
+        }
         result = cast(usize)size;
-        SDL_RWclose(io);
-    }
-    else
-    {
-        LOG_DEBUG("SDL_RWFromFile failed for %s with error: %s", filename, SDL_GetError());
     }
     return(result);
 }
@@ -360,7 +359,6 @@ allocate_file_info(Zhc_File_Group *group, char *filename)
 {
     Zhc_File_Info *result = dgl_mem_arena_push_struct(group->arena, Zhc_File_Info);
     usize filename_size = dgl_string_length(filename);
-
 
     // NOTE(dgl): the linked list is sorted by filename.
     Zhc_File_Info *node = group->first_file_info;
@@ -397,6 +395,26 @@ allocate_file_info(Zhc_File_Group *group, char *filename)
     result->filename = dgl_mem_arena_push_array(group->arena, char, filename_size + 1);
     dgl_memcpy(result->filename, filename, filename_size);
     result->filename[filename_size] = '\0';
+
+    DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(group->arena);
+    {
+        DGL_String_Builder tmp_builder = dgl_string_builder_init(temp.arena, 128);
+        dgl_string_append(&tmp_builder, "%s%s", group->dirpath, result->filename);
+
+        char *tmp_filepath = dgl_string_c_style(&tmp_builder);
+        SDL_RWops *io = cast(SDL_RWops *)SDL_RWFromFile(tmp_filepath, "rb");
+        if(io != 0)
+        {
+            result->handle.no_error = true;
+            result->handle.platform = io;
+        }
+        else
+        {
+            LOG_DEBUG("SDL_RWFromFile failed for %s with error: %s", tmp_filepath, SDL_GetError());
+        }
+    }
+    dgl_mem_arena_end_temp(temp);
+
     group->count++;
 
     return(result);
@@ -445,16 +463,7 @@ ZHC_GET_DIRECTORY_FILENAMES(get_directory_filenames)
                entry->d_name[2] == '\0'){ continue; }
 
             Zhc_File_Info *info = allocate_file_info(result, entry->d_name);
-
-            DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(result->arena);
-
-            DGL_String_Builder tmp_builder = dgl_string_builder_init(temp.arena, 128);
-            dgl_string_append(&tmp_builder, "%s%s", result->dirpath, info->filename);
-
-            char *tmp_filepath = dgl_string_c_style(&tmp_builder);
-            info->size = sdl_file_size(tmp_filepath);
-
-            dgl_mem_arena_end_temp(temp);
+            info->size = sdl_file_size(&info->handle);
         }
     }
     return(result);
@@ -516,21 +525,23 @@ ZHC_GET_USER_DATA_BASE_PATH(sdl_external_storage_path)
 
 ZHC_READ_ENTIRE_FILE(sdl_read_entire_file)
 {
-    bool32 result = false;
-
-    SDL_RWops *io = SDL_RWFromFile(filename, "rb");
-    if(io != 0)
+    if(handle->no_error)
     {
-        usize read = SDL_RWread(io, buffer, 1, buffer_size);
-        LOG_DEBUG("Reading file %s (%d bytes) into buffer %p (%d bytes)", filename, read, buffer, buffer_size);
-        assert(read >= buffer_size, "Could not read entire file");
-        result = true;
-        SDL_RWclose(io);
+        SDL_RWops *io = cast(SDL_RWops *)handle->platform;
+        usize read = SDL_RWread(io, buffer, sizeof(*buffer), buffer_size);
+        LOG_DEBUG("Reading (%d bytes) from file into buffer %p (%d bytes)", read, buffer, buffer_size);
+        if(read == buffer_size)
+        {
+            if(SDL_RWseek(io, 0, RW_SEEK_SET) < 0)
+            {
+                handle->no_error = false;
+                LOG_DEBUG("Could not set the file cursor to beginning of file after reading.");
+            }
+        }
+        else
+        {
+            handle->no_error = false;
+            LOG_DEBUG("Could not read entire file: Handle: %p, Buffer: %p, Size: %zu, Read: %zu", io, buffer, buffer_size, read);
+        }
     }
-    else
-    {
-        LOG_DEBUG("SDL_RWFromFile failed for %s with error: %s", filename, SDL_GetError());
-    }
-
-    return(result);
 }

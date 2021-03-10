@@ -1,6 +1,6 @@
 #include "zhc_lib.h"
-#include "zhc_asset.cpp"
 
+#include "zhc_lib.cpp"
 #include <string.h>
 #include <sys/mman.h> /* mmap */
 
@@ -52,11 +52,11 @@ main(int argc, char **argv)
         const usize buffer_size = kilobytes(1023);
         uint8 buffer[buffer_size] = {};
 
-        assets_load_text(assets, asset_id, cast(uint8 *)text, text_length);
-        assets_load_text(assets, asset_id2, buffer, buffer_size);
+        assets_allocate_data(assets, asset_id, cast(uint8 *)text, text_length);
+        assets_allocate_data(assets, asset_id2, buffer, buffer_size);
 
-        Loaded_Text *loaded = assets_get_text(assets, asset_id);
-        Loaded_Text *loaded2 = assets_get_text(assets, asset_id2);
+        Loaded_Data *loaded = assets_get_data(assets, asset_id);
+        Loaded_Data *loaded2 = assets_get_data(assets, asset_id2);
 
         DGL_EXPECT(loaded->size, ==, text_length, usize, "%zu");
         DGL_EXPECT(loaded2->size, ==, buffer_size, usize, "%zu");
@@ -77,7 +77,7 @@ main(int argc, char **argv)
         Asset_ID asset_id = assets_push(assets);
         assets_end_allocate(assets);
 
-        Loaded_Text *text = assets_get_text(assets, asset_id);
+        Loaded_Data *text = assets_get_data(assets, asset_id);
 
         DGL_EXPECT_ptr(text, ==, 0);
 
@@ -93,7 +93,7 @@ main(int argc, char **argv)
 
         char *text = "Example Text";
         usize text_length = dgl_string_length(text);
-        assets_load_text(assets, asset_id, cast(uint8 *)text, text_length);
+        assets_allocate_data(assets, asset_id, cast(uint8 *)text, text_length);
 
         Asset_Memory_Block *block = assets->memory_sentinel.next;
         DGL_EXPECT(block->size, ==, text_length + sizeof(Asset_Memory_Header), usize, "%zu");
@@ -117,7 +117,7 @@ main(int argc, char **argv)
 
         char *text = "Example Text";
         usize text_length = dgl_string_length(text);
-        assets_load_text(assets, asset_id, cast(uint8 *)text, text_length);
+        assets_allocate_data(assets, asset_id, cast(uint8 *)text, text_length);
 
         Asset_Memory_Block *block = assets->memory_sentinel.next;
         DGL_EXPECT(block->size, ==, kilobytes(1) - sizeof(Asset_Memory_Block), usize, "%zu");
@@ -157,9 +157,9 @@ main(int argc, char **argv)
         char *text5 = "Example Text5";
         usize text_length5 = dgl_string_length(text5);
 
-        assets_load_text(assets, asset_id1, cast(uint8 *)text1, text_length1);
-        assets_load_text(assets, asset_id2, cast(uint8 *)text2, text_length2);
-        assets_load_text(assets, asset_id3, cast(uint8 *)text3, text_length3);
+        assets_allocate_data(assets, asset_id1, cast(uint8 *)text1, text_length1);
+        assets_allocate_data(assets, asset_id2, cast(uint8 *)text2, text_length2);
+        assets_allocate_data(assets, asset_id3, cast(uint8 *)text3, text_length3);
 
         Asset_Memory_Block *block = assets->memory_sentinel.next;
         DGL_EXPECT(block->size, ==, text_length1 + sizeof(Asset_Memory_Header), usize, "%zu");
@@ -171,12 +171,12 @@ main(int argc, char **argv)
         DGL_EXPECT_bool32(block->next->used, ==, false);
 
         usize remaining_size = block->next->next->next->size;
-        assets_load_text(assets, asset_id4, cast(uint8 *)text4, text_length4);
+        assets_allocate_data(assets, asset_id4, cast(uint8 *)text4, text_length4);
         DGL_EXPECT(block->next->next->next->size, ==, remaining_size, usize, "%zu");
         DGL_EXPECT_bool32(block->next->used, ==, false);
 
-        assets_load_text(assets, asset_id5, cast(uint8 *)text5, text_length5);
-        Loaded_Text *loaded5 = assets_get_text(assets, asset_id5);
+        assets_allocate_data(assets, asset_id5, cast(uint8 *)text5, text_length5);
+        Loaded_Data *loaded5 = assets_get_data(assets, asset_id5);
         DGL_EXPECT_bool32(block->next->used, ==, true);
         DGL_EXPECT(block->next->size, ==, text_length2 + sizeof(Asset_Memory_Header), usize, "%zu");
         DGL_EXPECT_ptr(block->next->next->next->next, ==, &assets->memory_sentinel);

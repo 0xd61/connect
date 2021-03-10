@@ -101,14 +101,10 @@ asset_release_memory(Zhc_Assets *assets, Asset *asset)
     asset->header = 0;
 }
 
-// NOTE(dgl): It is easy to extend this function and load and unload assets automatically,
-// by using a separate structure which holds the file info and a handle. This file info
-// must be known when we allocate the asset memory. With this system it is possible to load
-// the data in multiple threads.
-// This is currently not needed and difficult because we have some assets loaded from from
-// a buffer (e.g. the font bitmap).
+// NOTE(dgl): the allocate functions are needed for loading in memory data. This is an intermediate
+// step until we have a better idea to load this kind of data into assets
 internal void
-assets_load_font(Zhc_Assets *assets, Asset_ID index, uint8 *ttf_buffer, usize buffer_size)
+assets_allocate_font(Zhc_Assets *assets, Asset_ID index, uint8 *ttf_buffer, usize buffer_size)
 {
     assert(assets->assets, "Call assets_end_allocate before loading assets");
     Asset *asset = assets->assets + index;
@@ -138,10 +134,11 @@ assets_load_font(Zhc_Assets *assets, Asset_ID index, uint8 *ttf_buffer, usize bu
    }
 }
 
-// NOTE(dgl): we use a uint8 buffer here to make passing file data easier.
+// TODO(dgl): do a prepare image
 internal void
-assets_load_image(Zhc_Assets *assets, Asset_ID index, uint8 *buffer, usize buffer_size, int32 width, int32 height)
+assets_allocate_image(Zhc_Assets *assets, Asset_ID index, uint8 *buffer, usize buffer_size, int32 width, int32 height)
 {
+    // NOTE(dgl): only supports png files
     assert(assets->assets, "Call assets_end_allocate before loading assets");
     Asset *asset = assets->assets + index;
     if(!asset->header)
@@ -164,7 +161,7 @@ assets_load_image(Zhc_Assets *assets, Asset_ID index, uint8 *buffer, usize buffe
 }
 
 internal void
-assets_load_text(Zhc_Assets *assets, Asset_ID index, uint8 *buffer, usize buffer_size)
+assets_allocate_data(Zhc_Assets *assets, Asset_ID index, uint8 *buffer, usize buffer_size)
 {
     assert(assets->assets, "Call assets_end_allocate before loading assets");
     Asset *asset = assets->assets + index;
@@ -173,39 +170,92 @@ assets_load_text(Zhc_Assets *assets, Asset_ID index, uint8 *buffer, usize buffer
         usize total_size = buffer_size +
                            sizeof(Asset_Memory_Header);
 
-        asset->header = asset_acquire_memory(assets, total_size, index, Asset_Type_Text);
-        Loaded_Text *text = &asset->header->text;
+        asset->header = asset_acquire_memory(assets, total_size, index, Asset_Type_Data);
+        Loaded_Data *data = &asset->header->data;
 
-        text->size = buffer_size;
-        text->memory = cast(uint8 *)(asset->header + 1);
-        dgl_memcpy(text->memory, buffer, buffer_size);
+        data->size = buffer_size;
+        data->memory = cast(uint8 *)(asset->header + 1);
+        dgl_memcpy(data->memory, buffer, buffer_size);
+    }
+}
+
+// TODO(dgl): support dynamic loading for images and data
+internal void
+assets_load_font(Zhc_Assets *assets, Asset_ID index)
+{
+    // NOTE(dgl): only supports .ttf files
+    assert(assets->assets, "Call assets_end_allocate before loading assets");
+    Asset *asset = assets->assets + index;
+
+    if(!asset->header)
+    {
+        if(asset->file_index > 0)
+        {
+            Asset_File *file = assets->files + asset->file_index;
+
+            // NOTE(dgl): we only encode ASCII + Latin-1 (first 256 code points)
+            // if we need more, use glyphsets with each 256 characters to reduce
+            // the amount of memory needed.
+            int32 glyph_count = 256;
+            usize total_size = file->size +
+                               (sizeof(stbtt_bakedchar) * cast(usize)glyph_count) +
+                               sizeof(Asset_Memory_Header);
+
+            asset->header = asset_acquire_memory(assets, total_size, index, Asset_Type_Font);
+            Loaded_Font *font = &asset->header->font;
+
+            font->glyph_count = glyph_count;
+            font->glyphs = cast(stbtt_bakedchar *)(asset->header + 1);
+            font->ttf_buffer = cast(uint8 *)(font->glyphs + font->glyph_count);
+
+            platform.read_entire_file(&file->handle, font->ttf_buffer, file->size);
+            assert(file->handle.no_error, "Could not load font");
+
+            int32 init_success = stbtt_InitFont(&font->stbfont, font->ttf_buffer, stbtt_GetFontOffsetForIndex(font->ttf_buffer,0));
+            assert(init_success, "Failed to load font");
+            LOG_DEBUG("Font - ttf_buffer: %p, data: %p, user_data: %p, font_start: %d, hhea: %d", font->ttf_buffer, font->stbfont.data, font->stbfont.userdata, font->stbfont.fontstart, font->stbfont.hhea);
+        }
+        else
+        {
+            LOG_DEBUG("Cannot load font without a file");
+        }
     }
 }
 
 #define assets_get_font(assets, index) cast(Loaded_Font *) assets_get_(assets, index, Asset_Type_Font)
 #define assets_get_image(assets, index) cast(Loaded_Image *) assets_get_(assets, index, Asset_Type_Image)
-#define assets_get_text(assets, index) cast(Loaded_Text *) assets_get_(assets, index, Asset_Type_Text)
+#define assets_get_data(assets, index) cast(Loaded_Data *) assets_get_(assets, index, Asset_Type_Data)
 internal void *
 assets_get_(Zhc_Assets *assets, Asset_ID index, Asset_Type type)
 {
     void *result = 0;
 
     Asset *asset = assets->assets + index;
-    if(asset->header)
+    switch(type)
     {
-        assert(asset->header->type == type, "Type does not match asset type");
-        if(type == Asset_Type_Font) { result = &asset->header->font; }
-        else if(type == Asset_Type_Image) { result = &asset->header->image; }
-        else if(type == Asset_Type_Text) { result = &asset->header->text; }
-        else
+        case Asset_Type_Font:
         {
-            LOG_DEBUG("Unsupported asset type %d", type);
-        }
+            assets_load_font(assets, index);
+            if(asset->header) { result = &asset->header->font; }
+        } break;
+        case Asset_Type_Image:
+        {
+            // TODO(dgl): try to load asset
+            if(asset->header) { result = &asset->header->image; }
+        } break;
+        case Asset_Type_Data:
+        {
+            // TODO(dgl): try to load asset
+            if(asset->header) { result = &asset->header->data; }
+        } break;
+        default: { LOG_DEBUG("Unsupported asset type %d", type); }
     }
-    else
+
+    if(!asset->header)
     {
-        LOG("Asset %d currently not loaded", index);
+        LOG_DEBUG("Failed to load asset %d dynamically.", index);
     }
+
     return(result);
 }
 
@@ -227,34 +277,63 @@ assets_push(Zhc_Assets *assets)
     return(result);
 }
 
+internal Asset_ID
+assets_push_file(Zhc_Assets *assets, Zhc_File_Handle handle, usize size)
+{
+    Asset_ID result = assets_push(assets);
+    assets->files = dgl_mem_arena_resize_array(assets->permanent_arena, Asset_File, assets->files, cast(usize)assets->file_count, cast(usize)(assets->file_count + 1));
+
+    Asset_File *file = assets->files + assets->file_count++;
+    file->asset = result;
+    file->handle = handle;
+    file->size = size;
+
+    return(result);
+}
+
 // NOTE(dgl): file if is the same as the list element in group
 // TODO(dgl): Find better way to identify files.
 internal Zhc_Assets *
-assets_begin_allocate(DGL_Mem_Arena *permanent_arena, usize size)
+assets_begin_allocate(DGL_Mem_Arena *permanent_arena, usize memory_size)
 {
     Zhc_Assets *result = dgl_mem_arena_push_struct(permanent_arena, Zhc_Assets);
     result->permanent_arena = permanent_arena;
 
-    result->memory = dgl_mem_arena_push_array(result->permanent_arena, uint8, size);
+    result->memory = dgl_mem_arena_push_array(result->permanent_arena, uint8, memory_size);
 
     result->memory_sentinel.next = &result->memory_sentinel;
     result->memory_sentinel.prev = &result->memory_sentinel;
     result->header_sentinel.next = &result->header_sentinel;
     result->header_sentinel.prev = &result->header_sentinel;
 
-    insert_block(&result->memory_sentinel, result->memory, size);
+    insert_block(&result->memory_sentinel, result->memory, memory_size);
 
     result->asset_count = 0;
 
+    // NOTE(dgl): we create an invalid file on index 0. This is the default
+    // file for all assets not backed by a file.
+    result->file_count = 1;
+
+    // NOTE(dgl): must be last allocation in this function, because we resize on each pushed file.
+    result->files = dgl_mem_arena_push_array(result->permanent_arena, Asset_File, cast(usize)result->file_count);
     return(result);
 }
 
 internal void
 assets_end_allocate(Zhc_Assets *assets)
 {
+
+    assets->assets = dgl_mem_arena_push_array(assets->permanent_arena, Asset, cast(usize)assets->asset_count);
+
     // NOTE(dgl): put file ids into assets. If assets do not have a file id, they are child assets
     // of others (like the font bitmap).
-    assets->assets = dgl_mem_arena_push_array(assets->permanent_arena, Asset, cast(usize)assets->asset_count);
+    for(int index = 1; index < assets->file_count; ++index)
+    {
+        Asset_File *file = assets->files + index;
+        Asset *asset = assets->assets + file->asset;
+
+        asset->file_index = index;
+    }
 }
 
 // internal void

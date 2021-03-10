@@ -219,7 +219,7 @@ net_init_socket(DGL_Mem_Arena *arena, char *ip, uint16 port)
     result.address.ip[index] = cast(uint8)number;
     result.address.port = port;
 
-    platform.setup_socket(arena, &result);
+    platform.open_socket(arena, &result);
     return(result);
 }
 

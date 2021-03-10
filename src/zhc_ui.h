@@ -22,9 +22,38 @@ struct Theme
 {
     Screen_Size type;
     int32 font_size;
+    int32 icon_size;
     V2 menu_size;
     V4 fg_color;
     V4 bg_color;
+};
+
+enum Icon_Type
+{
+    Icon_Type_None,
+    Icon_Type_Light,
+    Icon_Type_Dark,
+    Icon_Type_Increase_Font,
+    Icon_Type_Decrease_Font,
+    Icon_Type_Next,
+    Icon_Type_Previous,
+    Icon_Type_Count
+};
+
+struct Icon
+{
+    Asset_ID bitmap;
+    Icon_Type type;
+    V4 box;
+    V2 offset;
+};
+
+struct Icon_Set
+{
+    // TODO(dgl): not nice, can be replaced, if we dynamically
+    // load our assets
+    Zhc_File_Group *asset_buffer_group;
+    Icon icons[Icon_Type_Count];
 };
 
 struct Font
@@ -57,19 +86,20 @@ struct Imui_Context
     bool32 hot_updated;
 
     Theme theme;
+    Zhc_Assets *assets;
+
+
+    Icon_Set icons;
 
     Font system_font;
     Font text_font;
-
-    Zhc_Assets *assets;
+    int32 desired_text_font_size; /* in pixels */
 
     Zhc_Input *input;
     Zhc_Offscreen_Buffer *buffer;
 
     Stack(Element_ID) id_stack;
     Stack(Element_State) element_state_list;
-
-    int32 desired_text_font_size; /* in pixels */
 };
 
 #endif // ZHC_UI

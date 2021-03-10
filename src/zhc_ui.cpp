@@ -580,7 +580,7 @@ retry:
     }
 
     LOG_DEBUG("Loading bitmap buffer %dx%d", bitmap_width, bitmap_height);
-    assets_load_image(assets, font->bitmap, 0, 0, bitmap_width, bitmap_height);
+    assets_allocate_image(assets, font->bitmap, 0, 0, bitmap_width, bitmap_height);
     font_bitmap = assets_get_image(assets, font->bitmap);
 
     real32 s = stbtt_ScaleForMappingEmToPixels(&font_asset->stbfont, 1) / stbtt_ScaleForPixelHeight(&font_asset->stbfont, 1);
@@ -617,26 +617,6 @@ retry:
     font_asset->glyphs[cast(int32)'\n'].x1 = font_asset->glyphs[cast(int32)'\n'].x0;
 }
 
-internal void
-initialize_font(DGL_Mem_Arena *transient_arena, Zhc_Assets *assets, Font *font, char *asset_path)
-{
-    DGL_String_Builder data_base_path_builder = dgl_string_builder_init(transient_arena, 512);
-    bool32 base_path_success = platform.get_data_base_path(&data_base_path_builder);
-    assert(base_path_success, "Could not load system path");
-    dgl_string_append(&data_base_path_builder, asset_path);
-
-    char *path = dgl_string_c_style(&data_base_path_builder);
-    usize file_size = platform.file_size(path);
-    uint8 *ttf_buffer = dgl_mem_arena_push_array(transient_arena, uint8, file_size);
-    bool32 file_success = platform.read_entire_file(path, ttf_buffer, file_size);
-    assert(file_success, "Could not load default font");
-
-    LOG_DEBUG("Initializing font with buffer %p, size: %d", ttf_buffer, file_size);
-
-    assets_load_font(assets, font->font_asset, ttf_buffer, file_size);
-    ui_resize_font(assets, font, 16);
-}
-
 internal bool32
 maybe_update_theme(Imui_Context *ctx)
 {
@@ -665,31 +645,39 @@ maybe_update_theme(Imui_Context *ctx)
 }
 
 Imui_Context *
-ui_context_init(DGL_Mem_Arena *arena)
+ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
 {
-    Imui_Context *result = dgl_mem_arena_push_struct(arena, Imui_Context);
+    Imui_Context *result = dgl_mem_arena_push_struct(permanent_arena, Imui_Context);
     result->id_stack.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
-    result->id_stack.memory = dgl_mem_arena_push_array(arena, Element_ID, result->id_stack.count);
+    result->id_stack.memory = dgl_mem_arena_push_array(permanent_arena, Element_ID, result->id_stack.count);
     result->element_state_list.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
-    result->element_state_list.memory = dgl_mem_arena_push_array(arena, Element_State, result->element_state_list.count);
+    result->element_state_list.memory = dgl_mem_arena_push_array(permanent_arena, Element_State, result->element_state_list.count);
+    result->desired_text_font_size = em(result, 1);
 
-    result->assets = assets_begin_allocate(arena, megabytes(24));
+    result->assets = assets_begin_allocate(permanent_arena, megabytes(24));
     {
-        result->text_font.font_asset = assets_push(result->assets);
+        DGL_String_Builder tmp_path_builder = dgl_string_builder_init(transient_arena, 256);
+        bool32 base_path_success = platform.get_data_base_path(&tmp_path_builder);
+        assert(base_path_success, "Could not load system path");
+
+        dgl_string_append(&tmp_path_builder, "fonts");
+        char *tmp_path = dgl_string_c_style(&tmp_path_builder);
+        Zhc_File_Group *group = platform.get_directory_filenames(transient_arena, tmp_path);
+
+        // TODO(dgl): make it possible to update the asset_file info to change font files, e.g. for network load?
+        assert(group->count > 0, "No font file found");
+        result->system_font.font_asset = assets_push_file(result->assets, group->first_file_info->handle, group->first_file_info->size);
+        result->text_font.font_asset = assets_push_file(result->assets, group->first_file_info->next->handle, group->first_file_info->next->size);
+
         result->text_font.bitmap = assets_push(result->assets);
-        result->system_font.font_asset = assets_push(result->assets);
         result->system_font.bitmap = assets_push(result->assets);
-        // TODO(dgl): icons
     }
     assets_end_allocate(result->assets);
 
-    DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(arena);
-    {
-        initialize_font(temp.arena, result->assets, &result->system_font, "fonts/Inter-Regular.ttf");
-        initialize_font(temp.arena, result->assets, &result->text_font, "fonts/Inter-Regular.ttf");
-        result->desired_text_font_size = result->system_font.size;
-    }
-    dgl_mem_arena_end_temp(temp);
+    assets_load_font(result->assets, result->system_font.font_asset);
+    ui_resize_font(result->assets, &result->system_font, em(result, 1));
+    assets_load_font(result->assets, result->text_font.font_asset);
+    ui_resize_font(result->assets, &result->text_font, em(result, 1));
 
     return(result);
 }

@@ -27,6 +27,7 @@ struct Lib_State
 
     Imui_Context *ui_ctx;
 
+    // TODO(dgl): replace this with assets?
     DGL_Mem_Arena io_arena; // NOTE(dgl): cleared on each update timeout
     real32 io_update_timeout;
     File active_file;

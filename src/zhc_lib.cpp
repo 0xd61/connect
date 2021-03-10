@@ -98,16 +98,10 @@ read_active_file(DGL_Mem_Arena *arena, Zhc_File_Group *group, Zhc_File_Info *inf
             result.info = info;
             result.data = dgl_mem_arena_push_array(arena, uint8, result.info->size);
 
-            DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(arena);
-            {
-                DGL_String_Builder temp_builder = dgl_string_builder_init(temp.arena, 128);
-                dgl_string_append(&temp_builder, "%s%s", group->dirpath, result.info->filename);
+            LOG_DEBUG("Loading file %s", result.info->filename);
+            platform.read_entire_file(&result.info->handle, result.data, result.info->size);
+            assert(result.info->handle.no_error, "Failed loading the file");
 
-                char *filepath = dgl_string_c_style(&temp_builder);
-                LOG_DEBUG("Loading file %s", filepath);
-                platform.read_entire_file(filepath, result.data, result.info->size);
-            }
-            dgl_mem_arena_end_temp(temp);
             result.hash = HASH_OFFSET_BASIS;
             hash(&result.hash, result.data, result.info->size);
         }
@@ -135,7 +129,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
         state->net_socket = net_init_socket(&state->permanent_arena, "0.0.0.0", 1337);
 
-        state->ui_ctx = ui_context_init(&state->permanent_arena);
+        state->ui_ctx = ui_context_init(&state->permanent_arena, &state->transient_arena);
 
         // NOTE(dgl): Initialize IO Context
         // The io_arena must be initialized before beginnging the temp arena. Otherwise the allocation
@@ -332,7 +326,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         dgl_mem_arena_init(&state->permanent_arena, (uint8 *)memory->permanent_storage + sizeof(*state), ((DGL_Mem_Index)memory->permanent_storage_size - sizeof(*state)));
         dgl_mem_arena_init(&state->transient_arena, (uint8 *)memory->transient_storage, (DGL_Mem_Index)memory->transient_storage_size);
 
-        state->ui_ctx = ui_context_init(&state->permanent_arena);
+        state->ui_ctx = ui_context_init(&state->permanent_arena, &state->transient_arena);
 
         // NOTE(dgl): Initialize IO Context
         // The io_arena must be initialized before beginnging the temp arena. Otherwise the allocation
