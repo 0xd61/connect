@@ -70,7 +70,7 @@ ren_draw_rectangle(Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
 }
 
 internal void
-ren_draw_bitmap(Zhc_Offscreen_Buffer *buffer, Zhc_Image *image, V4 rect, V2 pos, V4 color)
+ren_draw_bitmap(Zhc_Offscreen_Buffer *buffer, Loaded_Image *image, V4 rect, V2 pos, V4 color)
 {
     // TODO(dgl): Something is not right. An image 100x100 is drawm only about 1/3.
 

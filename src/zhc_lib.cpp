@@ -5,10 +5,26 @@
     - responsive ui
     - button icons
     - Some kind of overflow in stbtt_BakeFontBitmap for (108px size fonts)
+    - PNG loader
+    - Render circles
+    - Renderer fix upper clipping
 */
 
+#include "zhc_lib.h"
+#include "zhc_net.cpp"
+#include "zhc_asset.cpp"
+#include "zhc_renderer.cpp"
+// TODO(dgl): should we move the rendering calls out of UI and
+// use a render command buffer?
+#include "zhc_ui.cpp"
+
 #define STB_TRUETYPE_IMPLEMENTATION  // force following include to generate implementation
+#define STB_IMAGE_IMPLEMENTATION
+
 #define STBTT_STATIC
+#define STBI_STATIC
+
+#define STBI_ASSERT(x) assert(x, "stb assert")
 #define STBTT_assert(x) assert(x, "stb assert")
 
 // NOTE(dgl): Disable compiler warnings for stb includes
@@ -19,8 +35,19 @@
 #endif
 #pragma clang diagnostic ignored "-Wsign-conversion"
 #pragma clang diagnostic ignored "-Wfloat-conversion"
+#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
 
 #include "lib/stb_truetype.h"
+
+#define STBI_NO_JPEG
+#define STBI_NO_BMP
+#define STBI_NO_TGA
+#define STBI_NO_PSD
+#define STBI_NO_HDR
+#define STBI_NO_PIC
+#define STBI_NO_GIF
+#define STBI_NO_PNM
+#include "lib/stb_image.h"
 
 #pragma clang diagnostic pop
 #endif
@@ -34,17 +61,11 @@
 #pragma warning (disable: 5054)             // operator '|': deprecated between enumerations of different types
 #endif
 
-#include "stb_truetype.h"
+#include "lib/stb_truetype.h"
+#include "lib/stb_image.h"
 
 #pragma warning(pop)
 #endif
-
-#include "zhc_lib.h"
-#include "zhc_net.cpp"
-#include "zhc_renderer.cpp"
-// TODO(dgl): should we move the rendering calls out of UI and
-// use a render command buffer?
-#include "zhc_ui.cpp"
 
 internal Zhc_File_Info *
 get_file_info(Zhc_File_Group *group, int32 index)
@@ -177,7 +198,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
                  rect(ui_ctx->window.w - button_w, (ui_ctx->window.h - button_h)/2, button_w, button_h),
                  color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.2f),
                  color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.2f),
-                 ui_ctx->system_font, ">") ||
+                 &ui_ctx->system_font, ">") ||
        input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Right) ||
        input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Enter) ||
        input_pressed(ui_ctx->input, ' '))
@@ -192,7 +213,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
                  rect(0, (ui_ctx->window.h - button_h)/2, button_w, button_h),
                  color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.2f),
                  color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.2f),
-                 ui_ctx->system_font, "<") ||
+                 &ui_ctx->system_font, "<") ||
        input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Left))
     {
         if(state->files)
@@ -233,10 +254,10 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     }
 
     // NOTE(dgl): update font size, if requested
-    if(ui_ctx->desired_text_font_size != ui_ctx->text_font->size)
+    if(ui_ctx->desired_text_font_size != ui_ctx->text_font.size)
     {
-        LOG_DEBUG("Resizing font from %d to %d", ui_ctx->text_font->size, ui_ctx->desired_text_font_size);
-        ui_resize_font(&ui_ctx->font_arena, ui_ctx->text_font, ui_ctx->desired_text_font_size);
+        LOG_DEBUG("Resizing font from %d to %d", ui_ctx->text_font.size, ui_ctx->desired_text_font_size);
+        ui_resize_font(ui_ctx->assets, &ui_ctx->text_font, ui_ctx->desired_text_font_size);
     }
 
     // NOTE(dgl): update active file if requested
@@ -347,10 +368,10 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
             color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.5f));
 
     // NOTE(dgl): update font size, if requested
-    if(ui_ctx->desired_text_font_size != ui_ctx->text_font->size)
+    if(ui_ctx->desired_text_font_size != ui_ctx->text_font.size)
     {
-        LOG_DEBUG("Resizing font from %f to %f", ui_ctx->text_font->size, ui_ctx->desired_text_font_size);
-        ui_resize_font(&ui_ctx->font_arena, ui_ctx->text_font, ui_ctx->desired_text_font_size);
+        LOG_DEBUG("Resizing font from %d to %d", ui_ctx->text_font.size, ui_ctx->desired_text_font_size);
+        ui_resize_font(ui_ctx->assets, &ui_ctx->text_font, ui_ctx->desired_text_font_size);
     }
 
     // TODO(dgl): blocks until timeout is hit or connection is

@@ -170,6 +170,10 @@ zhc_input_reset(Zhc_Input *input)
     input->key_pressed = 0;
 }
 
+// TODO(dgl): instead of loading a file by filename and path
+// we could use the filehandle. Then we could use the same handle type
+// for network and filesystem files.
+// This would also allow us to dynamically load and unload files
 struct Zhc_File_Info
 {
     Zhc_File_Info *next;

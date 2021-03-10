@@ -3,7 +3,7 @@
 
 #include "zhc_platform.h"
 #include "zhc_utils.h"
-#include "lib/stb_truetype.h"
+#include "zhc_asset.h"
 #include "zhc_ui.h"
 
 #define ZHC_VERSION "0.1.0"

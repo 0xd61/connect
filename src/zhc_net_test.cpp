@@ -1,6 +1,3 @@
-// #include "zhc_lib.h"
-// #include "zhc_lib.cpp"
-
 #include "zhc_lib.h"
 #include "zhc_net.cpp"
 

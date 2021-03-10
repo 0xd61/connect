@@ -1,4 +1,3 @@
-
 // NOTE(dgl): em is based on the current font size of if not available 16px
 internal inline int32
 em(Theme theme, real32 value)
@@ -312,8 +311,22 @@ utf8_to_codepoint(char *c, uint32 *dest)
     return(byte_count);
 }
 
+internal inline stbtt_bakedchar
+get_font_glyph(Loaded_Font *font, uint32 codepoint)
+{
+    stbtt_bakedchar result = {};
+    if(codepoint >= font->glyph_count)
+    {
+        LOG_DEBUG("Glyph cannot be drawn. We currently support only %d glyphs", font->glyph_count);
+        codepoint = 0;
+    }
+
+    result = font->glyphs[codepoint];
+    return(result);
+}
+
 internal int32
-get_font_width(Font *font, char *text, int32 byte_count)
+get_font_width(Loaded_Font *font, char *text, int32 byte_count)
 {
     char *c = text;
     int32 result = 0;
@@ -321,95 +334,9 @@ get_font_width(Font *font, char *text, int32 byte_count)
     while(*c && (byte_count-- > 0))
     {
         c += utf8_to_codepoint(c, &codepoint);
-        stbtt_bakedchar *glyph = font->glyphs + codepoint;
-        result += dgl_round_real32_to_int32(glyph->xadvance);
+        stbtt_bakedchar glyph = get_font_glyph(font, codepoint);
+        result += dgl_round_real32_to_int32(glyph.xadvance);
     }
-
-    return(result);
-}
-
-// NOTE(dgl): Currently we can only resize a font if it was the last allocation in the
-// memory_arena. If this is not the case, better reinitialize the font.
-internal void
-ui_resize_font(DGL_Mem_Arena *arena, Font *current_font, int32 font_size)
-{
-    assert(current_font, "Font cannot be null");
-    // Get font metrics
-    int32 ascent, descent, linegap;
-    stbtt_GetFontVMetrics(&current_font->stbfont, &ascent, &descent, &linegap);
-
-    current_font->size = font_size;
-    real32 scale = stbtt_ScaleForPixelHeight(&current_font->stbfont, cast(real32)current_font->size);
-    // NOTE(dgl): linegap is defined by the font. However it was 0 in the fonts I
-    // have tested.
-    current_font->linegap = 1.2f; //cast(real32)linegap;
-    current_font->height = cast(real32)(ascent - descent) * scale;
-
-    // build bitmap
-    int32 bitmap_width = 128;
-    int32 bitmap_height = 128;
-
-retry:
-    int32 pixel_count = bitmap_width * bitmap_height;
-    if(current_font->bitmap.pixels)
-    {
-        LOG_DEBUG("Resizing font bitmap buffer", bitmap_width, bitmap_height);
-        int32 current_pixel_count = current_font->bitmap.width * current_font->bitmap.height;
-        current_font->bitmap.pixels = dgl_mem_arena_resize_array(arena, uint32, current_font->bitmap.pixels, cast(usize)current_pixel_count, cast(usize)pixel_count);
-    }
-    else
-    {
-        current_font->bitmap.pixels = dgl_mem_arena_push_array(arena, uint32, cast(usize)pixel_count);
-    }
-
-    current_font->bitmap.width = bitmap_width;
-    current_font->bitmap.height = bitmap_height;
-    real32 s = stbtt_ScaleForMappingEmToPixels(&current_font->stbfont, 1) / stbtt_ScaleForPixelHeight(&current_font->stbfont, 1);
-
-    /* load glyphs */
-    int32 success = stbtt_BakeFontBitmap(current_font->ttf_buffer, 0, cast(real32)current_font->size * s,
-                                         cast(uint8 *)current_font->bitmap.pixels, current_font->bitmap.width, current_font->bitmap.height,
-                                         0, array_count(current_font->glyphs), current_font->glyphs);
-
-    if(success < 0)
-    {
-        LOG_DEBUG("Could not fit the characters into the bitmap (%dx%d). Retrying...", current_font->bitmap.width, current_font->bitmap.height);
-        bitmap_width *= 2;
-        bitmap_height *= 2;
-        goto retry;
-    }
-
-    // map 8bit Bitmap to 32bit
-    for(int32 index = pixel_count - 1;
-        index >= 0;
-        --index)
-    {
-        // NOTE(dgl): we only store the alpha channel.
-        // the others are set on drawing.
-        uint8 alpha = *(cast(uint8 *)current_font->bitmap.pixels + index);
-        current_font->bitmap.pixels[index] = (cast(uint32)(alpha << 24) |
-                                             (0xFF << 16) |
-                                             (0xFF << 8) |
-                                             (0xFF << 0));
-    }
-
-    // make tab and newline glyphs invisible
-    current_font->glyphs[cast(int32)'\t'].x1 = current_font->glyphs[cast(int32)'\t'].x0;
-    current_font->glyphs[cast(int32)'\n'].x1 = current_font->glyphs[cast(int32)'\n'].x0;
-}
-
-internal Font *
-initialize_font(DGL_Mem_Arena *arena, uint8 *ttf_buffer, int32 font_size)
-{
-    Font *result = dgl_mem_arena_push_struct(arena, Font);
-    result->ttf_buffer = ttf_buffer;
-
-    // init stbfont
-    int32 init_success = stbtt_InitFont(&result->stbfont, result->ttf_buffer, stbtt_GetFontOffsetForIndex(result->ttf_buffer,0));
-    assert(init_success, "Failed to load font");
-    LOG_DEBUG("Font - ttf_buffer: %p, data: %p, user_data: %p, font_start: %d, hhea: %d", result->ttf_buffer, result->stbfont.data, result->stbfont.userdata, result->stbfont.fontstart, result->stbfont.hhea);
-
-    ui_resize_font(arena, result, font_size);
 
     return(result);
 }
@@ -437,7 +364,12 @@ next_word_byte_count(char *text)
 internal V2
 ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text, int32 text_count)
 {
-    assert(font->bitmap.pixels, "Initialize font before rendering text");
+    Loaded_Image *font_bitmap = assets_get_image(ctx->assets, font->bitmap);
+    Loaded_Font *font_asset = assets_get_font(ctx->assets, font->font_asset);
+
+    assert(font_bitmap, "Initialize font before rendering text");
+    assert(font_asset, "Initialize font before rendering text");
+
     char *c = text;
     uint32 codepoint = 0;
     int32 x = body.x;
@@ -449,7 +381,7 @@ ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text, int32 
         // After drawing we check if the divider was a newline. If it was, we increase
         // y by one line. THe divier characters are all in ACII, hence only 1 byte long.
         int32 word_byte_count = next_word_byte_count(c) + 1;
-        int32 word_width = get_font_width(font, c, word_byte_count);
+        int32 word_width = get_font_width(font_asset, c, word_byte_count);
 
         if(current_w + word_width > body.w)
         {
@@ -473,11 +405,11 @@ ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text, int32 
                 continue;
             }
 
-            stbtt_bakedchar raw_glyph = font->glyphs[codepoint];
+            stbtt_bakedchar raw_glyph = get_font_glyph(font_asset, codepoint);
 
             V4 glyph = rect(raw_glyph.x0, raw_glyph.y0, raw_glyph.x1 - raw_glyph.x0, raw_glyph.y1 - raw_glyph.y0);
             V2 pos = v2(x + dgl_round_real32_to_int32(raw_glyph.xoff), y + dgl_round_real32_to_int32(raw_glyph.yoff));
-            ren_draw_bitmap(ctx->buffer, &font->bitmap, glyph, pos, color);
+            ren_draw_bitmap(ctx->buffer, font_bitmap, glyph, pos, color);
 
             int32 advance = dgl_round_real32_to_int32(raw_glyph.xadvance);
             current_w += advance;
@@ -492,6 +424,12 @@ ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text, int32 
 internal bool32
 ui_button(Imui_Context *ctx, V4 body, V4 prim_color, V4 hover_color, Font *font, char *label)
 {
+    Loaded_Image *font_bitmap = assets_get_image(ctx->assets, font->bitmap);
+    Loaded_Font *font_asset = assets_get_font(ctx->assets, font->font_asset);
+
+    assert(font_bitmap, "Initialize font before rendering text");
+    assert(font_asset, "Initialize font before rendering text");
+
     V4 label_color = ctx->theme.fg_color;
     bool32 result = false;
     usize label_count = dgl_string_length(label);
@@ -512,7 +450,7 @@ ui_button(Imui_Context *ctx, V4 body, V4 prim_color, V4 hover_color, Font *font,
 
     if(label_count > 0)
     {
-        int32 width = get_font_width(font, label, dgl_safe_size_to_int32(label_count));
+        int32 width = get_font_width(font_asset, label, dgl_safe_size_to_int32(label_count));
         char *c = label;
         uint32 codepoint = 0;
         int32 x = body.x + ((body.w - width) / 2);
@@ -523,11 +461,11 @@ ui_button(Imui_Context *ctx, V4 body, V4 prim_color, V4 hover_color, Font *font,
 
             if(codepoint == '\n') { continue; }
 
-            stbtt_bakedchar raw_glyph = font->glyphs[codepoint];
+            stbtt_bakedchar raw_glyph = get_font_glyph(font_asset, codepoint);
 
             V4 glyph = rect(raw_glyph.x0, raw_glyph.y0, raw_glyph.x1 - raw_glyph.x0, raw_glyph.y1 - raw_glyph.y0);
             V2 pos = v2(x + dgl_round_real32_to_int32(raw_glyph.xoff), y + dgl_round_real32_to_int32(raw_glyph.yoff));
-            ren_draw_bitmap(ctx->buffer, &font->bitmap, glyph, pos, label_color);
+            ren_draw_bitmap(ctx->buffer, font_bitmap, glyph, pos, label_color);
 
             x += dgl_round_real32_to_int32(raw_glyph.xadvance);
         }
@@ -548,7 +486,7 @@ ui_menu(Imui_Context *ctx, V4 body, V4 prim_col, V4 sec_col)
     int32 y = body.y + pad.top;
 
     V4 r = rect(x, y, button.w, button.h);
-    if(ui_button(ctx, r, prim_col, sec_col, ctx->system_font, "X"))
+    if(ui_button(ctx, r, prim_col, sec_col, &ctx->system_font, "X"))
     {
         V4 temp = ctx->theme.fg_color;
         ctx->theme.fg_color = ctx->theme.bg_color;
@@ -557,14 +495,14 @@ ui_menu(Imui_Context *ctx, V4 body, V4 prim_col, V4 sec_col)
     x += button.w + pad.right;
 
     r = rect(x, y, button.w, button.h);
-    if(ui_button(ctx, r, prim_col, sec_col, ctx->system_font, "V"))
+    if(ui_button(ctx, r, prim_col, sec_col, &ctx->system_font, "V"))
     {
         ctx->desired_text_font_size = dgl_clamp(ctx->desired_text_font_size - em(ctx, 0.5f), em(ctx, 0.5), MAX_FONT_SIZE);
     }
     x += button.w + pad.right;
 
     r = rect(x, y, button.w, button.h);
-    if(ui_button(ctx, r, prim_col, sec_col, ctx->system_font, "^"))
+    if(ui_button(ctx, r, prim_col, sec_col, &ctx->system_font, "^"))
     {
          ctx->desired_text_font_size = dgl_clamp(ctx->desired_text_font_size + em(ctx, 0.5f), em(ctx, 0.5), MAX_FONT_SIZE);
     }
@@ -584,7 +522,7 @@ ui_main_text(Imui_Context *ctx, char *text, usize text_count)
     begin_element(ctx, id, body);
 
     body.y -= c->scroll_pos;
-    c->content = ui_textarea(ctx, ctx->text_font, body, ctx->theme.fg_color, text, dgl_safe_size_to_int32(text_count));
+    c->content = ui_textarea(ctx, &ctx->text_font, body, ctx->theme.fg_color, text, dgl_safe_size_to_int32(text_count));
 
     if(c->content.h > body.h)
     {
@@ -609,33 +547,94 @@ ui_main_text(Imui_Context *ctx, char *text, usize text_count)
     end_element(ctx);
 }
 
+// NOTE(dgl): try to resize only fonts which are the last allocation in the
+// arena for easier allocation resizing.
 internal void
-reinit_fonts(Imui_Context *ctx, DGL_Mem_Arena *arena)
+ui_resize_font(Zhc_Assets *assets, Font *font, int32 font_size)
 {
-    // NOTE(dgl): completely reload the fonts. If this is too much overhead,
-    // we could store the ttf_buffer in permanent storage. @@performance
-    ctx->system_font = 0;
-    ctx->text_font = 0;
+    assert(font, "Font cannot be null");
+    Loaded_Font *font_asset = assets_get_font(assets, font->font_asset);
 
-    dgl_mem_arena_free_all(arena);
+    // Get font metrics
+    int32 ascent, descent, linegap;
+    stbtt_GetFontVMetrics(&font_asset->stbfont, &ascent, &descent, &linegap);
 
-    DGL_String_Builder data_base_path_builder = dgl_string_builder_init(arena, 512);
+    font->size = font_size;
+    real32 scale = stbtt_ScaleForPixelHeight(&font_asset->stbfont, cast(real32)font->size);
+    // NOTE(dgl): linegap is defined by the font. However it was 0 in the fonts I
+    // have tested.
+    font->linegap = 1.2f; //cast(real32)linegap;
+    font->height = cast(real32)(ascent - descent) * scale;
+
+    // NOTE(dgl): loading the font_bitmap, if it exists. Otherwise this pointer is NULL!
+    Loaded_Image *font_bitmap = assets_get_image(assets, font->bitmap);
+    int32 bitmap_width = 128;
+    int32 bitmap_height = 128;
+
+retry:
+    int32 pixel_count = bitmap_width * bitmap_height;
+    if(font_bitmap)
+    {
+        LOG_DEBUG("Unloading bitmap buffer (%dx%d) for resizing", bitmap_width, bitmap_height);
+        assets_unload(assets, font->bitmap);
+    }
+
+    LOG_DEBUG("Loading bitmap buffer %dx%d", bitmap_width, bitmap_height);
+    assets_load_image(assets, font->bitmap, 0, 0, bitmap_width, bitmap_height);
+    font_bitmap = assets_get_image(assets, font->bitmap);
+
+    real32 s = stbtt_ScaleForMappingEmToPixels(&font_asset->stbfont, 1) / stbtt_ScaleForPixelHeight(&font_asset->stbfont, 1);
+
+    /* load glyphs */
+    int32 success = stbtt_BakeFontBitmap(font_asset->ttf_buffer, 0, cast(real32)font->size * s,
+                                         cast(uint8 *)font_bitmap->pixels, font_bitmap->width, font_bitmap->height,
+                                         0, font_asset->glyph_count, font_asset->glyphs);
+
+    if(success < 0)
+    {
+        LOG_DEBUG("Could not fit the characters into the bitmap (%dx%d). Retrying...", font_bitmap->width, font_bitmap->height);
+        bitmap_width *= 2;
+        bitmap_height *= 2;
+        goto retry;
+    }
+
+    // map 8bit Bitmap to 32bit
+    for(int32 index = pixel_count - 1;
+        index >= 0;
+        --index)
+    {
+        // NOTE(dgl): we only store the alpha channel.
+        // the others are set on drawing.
+        uint8 alpha = *(cast(uint8 *)font_bitmap->pixels + index);
+        font_bitmap->pixels[index] = (cast(uint32)(alpha << 24) |
+                                             (0xFF << 16) |
+                                             (0xFF << 8) |
+                                             (0xFF << 0));
+    }
+
+    // make tab and newline glyphs invisible
+    font_asset->glyphs[cast(int32)'\t'].x1 = font_asset->glyphs[cast(int32)'\t'].x0;
+    font_asset->glyphs[cast(int32)'\n'].x1 = font_asset->glyphs[cast(int32)'\n'].x0;
+}
+
+internal void
+initialize_font(DGL_Mem_Arena *transient_arena, Zhc_Assets *assets, Font *font, char *asset_path)
+{
+    DGL_String_Builder data_base_path_builder = dgl_string_builder_init(transient_arena, 512);
     bool32 base_path_success = platform.get_data_base_path(&data_base_path_builder);
     assert(base_path_success, "Could not load system path");
-    dgl_string_append(&data_base_path_builder, "fonts/Inter-Regular.ttf");
+    dgl_string_append(&data_base_path_builder, asset_path);
 
     char *path = dgl_string_c_style(&data_base_path_builder);
     usize file_size = platform.file_size(path);
-    uint8 *ttf_buffer = dgl_mem_arena_push_array(arena, uint8, file_size);
+    uint8 *ttf_buffer = dgl_mem_arena_push_array(transient_arena, uint8, file_size);
     bool32 file_success = platform.read_entire_file(path, ttf_buffer, file_size);
     assert(file_success, "Could not load default font");
 
     LOG_DEBUG("Initializing font with buffer %p, size: %d", ttf_buffer, file_size);
 
-    ctx->system_font = initialize_font(arena, ttf_buffer, ctx->theme.font_size);
-
-    if(ctx->desired_text_font_size == 0) { ctx->desired_text_font_size = ctx->system_font->size; }
-    ctx->text_font = initialize_font(arena, ttf_buffer, ctx->desired_text_font_size);
+    assets_load_font(assets, font->font_asset, ttf_buffer, file_size);
+    ui_resize_font(assets, font, 16);
 }
 
 internal bool32
@@ -674,12 +673,23 @@ ui_context_init(DGL_Mem_Arena *arena)
     result->element_state_list.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
     result->element_state_list.memory = dgl_mem_arena_push_array(arena, Element_State, result->element_state_list.count);
 
-    usize font_arena_size = megabytes(24);
-    uint8 *font_arena_base = dgl_mem_arena_push_array(arena, uint8, font_arena_size);
-    dgl_mem_arena_init(&result->font_arena, font_arena_base, font_arena_size);
-    // NOTE(dgl): fonts are initialized in ui_context_update
-    // If a font must be initialized earlier, we could also init them here and reinit
-    // with corrected size in ui_context_update
+    result->assets = assets_begin_allocate(arena, megabytes(24));
+    {
+        result->text_font.font_asset = assets_push(result->assets);
+        result->text_font.bitmap = assets_push(result->assets);
+        result->system_font.font_asset = assets_push(result->assets);
+        result->system_font.bitmap = assets_push(result->assets);
+        // TODO(dgl): icons
+    }
+    assets_end_allocate(result->assets);
+
+    DGL_Mem_Temp_Arena temp = dgl_mem_arena_begin_temp(arena);
+    {
+        initialize_font(temp.arena, result->assets, &result->system_font, "fonts/Inter-Regular.ttf");
+        initialize_font(temp.arena, result->assets, &result->text_font, "fonts/Inter-Regular.ttf");
+        result->desired_text_font_size = result->system_font.size;
+    }
+    dgl_mem_arena_end_temp(temp);
 
     return(result);
 }
@@ -699,6 +709,8 @@ ui_context_update(Imui_Context *ctx, Zhc_Input *input, Zhc_Offscreen_Buffer *buf
     // NOTE(dgl): update theme if the screen size has changed from desktop to e.g. mobile
     if(maybe_update_theme(ctx))
     {
-        reinit_fonts(ctx, &ctx->font_arena);
+        ui_resize_font(ctx->assets, &ctx->system_font, ctx->theme.font_size);
+
+        // TODO(dgl): reload necessary icons
     }
 }
