@@ -182,7 +182,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
     ui_menu(ui_ctx,
             rect(ui_ctx->window.w - 300, 0, 300, 100),
-            color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.2f),
+            color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.3f),
             color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.2f));
 
     // TODO(dgl): use command buffer instead of desired file etc..
@@ -190,9 +190,9 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     int32 button_h = 400;
     if(ui_button(ui_ctx,
                  rect(ui_ctx->window.w - button_w, (ui_ctx->window.h - button_h)/2, button_w, button_h),
-                 color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.2f),
+                 color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.3f),
                  color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.2f),
-                 &ui_ctx->system_font, ">") ||
+                 Icon_Type_Next, 64) ||
        input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Right) ||
        input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Enter) ||
        input_pressed(ui_ctx->input, ' '))
@@ -205,9 +205,9 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
     if(ui_button(ui_ctx,
                  rect(0, (ui_ctx->window.h - button_h)/2, button_w, button_h),
-                 color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.2f),
+                 color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.3f),
                  color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.2f),
-                 &ui_ctx->system_font, "<") ||
+                 Icon_Type_Previous, 64) ||
        input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Left))
     {
         if(state->files)

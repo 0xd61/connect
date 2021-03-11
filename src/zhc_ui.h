@@ -30,11 +30,10 @@ struct Theme
 
 enum Icon_Type
 {
-    Icon_Type_None,
-    Icon_Type_Light,
-    Icon_Type_Dark,
     Icon_Type_Increase_Font,
     Icon_Type_Decrease_Font,
+    Icon_Type_Dark,
+    Icon_Type_Light,
     Icon_Type_Next,
     Icon_Type_Previous,
     Icon_Type_Count
@@ -45,14 +44,11 @@ struct Icon
     Asset_ID bitmap;
     Icon_Type type;
     V4 box;
-    V2 offset;
 };
 
 struct Icon_Set
 {
-    // TODO(dgl): not nice, can be replaced, if we dynamically
-    // load our assets
-    Zhc_File_Group *asset_buffer_group;
+    int32 size;
     Icon icons[Icon_Type_Count];
 };
 
@@ -88,8 +84,7 @@ struct Imui_Context
     Theme theme;
     Zhc_Assets *assets;
 
-
-    Icon_Set icons;
+    Icon_Set icon_sets[5]; /* 16, 25, 32, 64, 128 */
 
     Font system_font;
     Font text_font;

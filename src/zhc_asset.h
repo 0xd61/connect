@@ -86,6 +86,8 @@ struct Zhc_Assets
     Asset_Memory_Header header_sentinel;
     Asset_Memory_Block memory_sentinel;
 
+    // TODO(dgl): limit amout of assets and files
+
     int32 file_count;
     Asset_File *files;
 
@@ -95,4 +97,25 @@ struct Zhc_Assets
     Asset *assets;
 };
 
+internal Zhc_Assets *assets_begin_allocate(DGL_Mem_Arena *permanent_arena, usize memory_size);
+internal void assets_end_allocate(Zhc_Assets *assets);
+internal Asset_ID assets_push_file(Zhc_Assets *assets, Zhc_File_Handle handle, usize size);
+internal Asset_ID assets_push(Zhc_Assets *assets);
+
+// NOTE(dgl): simply allocate the memory
+internal void assets_allocate_font(Zhc_Assets *assets, Asset_ID index, usize ttf_size);
+internal void assets_allocate_image(Zhc_Assets *assets, Asset_ID index, int32 width, int32 height);
+internal void assets_allocate_data(Zhc_Assets *assets, Asset_ID index, usize size);
+
+// NOTE(dgl): allocate the memory and load (+parse) the data from the file handle
+internal void assets_load_font(Zhc_Assets *assets, Asset_ID index);
+internal void assets_load_image(Zhc_Assets *assets, Asset_ID index);
+
+internal void assets_unload(Zhc_Assets *assets, Asset_ID index);
+
+#define assets_get_font(assets, index) cast(Loaded_Font *) assets_get_(assets, index, Asset_Type_Font)
+#define assets_get_image(assets, index) cast(Loaded_Image *) assets_get_(assets, index, Asset_Type_Image)
+#define assets_get_data(assets, index) cast(Loaded_Data *) assets_get_(assets, index, Asset_Type_Data)
+internal void *assets_get_(Zhc_Assets *assets, Asset_ID index, Asset_Type type);
 #endif // ZHC_ASSET_H
+

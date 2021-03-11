@@ -26,6 +26,7 @@ default_theme_xs()
     Theme result = {};
     result.type = Screen_Size_XS;
     result.font_size = 16;
+    result.icon_size = 24;
     result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
     result.fg_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
@@ -39,6 +40,7 @@ default_theme_sm()
     Theme result = {};
     result.type = Screen_Size_SM;
     result.font_size = 16;
+    result.icon_size = 24;
     result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
     result.fg_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
@@ -52,6 +54,7 @@ default_theme_md()
     Theme result = {};
     result.type = Screen_Size_MD;
     result.font_size = 18;
+    result.icon_size = 32;
     result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
     result.fg_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
@@ -65,6 +68,7 @@ default_theme_lg()
     Theme result = {};
     result.type = Screen_Size_LG;
     result.font_size = 21;
+    result.icon_size = 32;
     result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
     result.fg_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
@@ -78,6 +82,7 @@ default_theme_xl()
     Theme result = {};
     result.type = Screen_Size_XL;
     result.font_size = 24;
+    result.icon_size = 32;
     result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
     result.fg_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
@@ -360,6 +365,30 @@ next_word_byte_count(char *text)
     return(result);
 }
 
+internal void
+ui_icon(Imui_Context *ctx, Icon_Type type, int32 size, V2 pos, V4 color)
+{
+    assert(type < Icon_Type_Count, "Count is not an icon type");
+
+    int32 index = 0;
+    Icon_Set *set = 0;
+    while(index < array_count(ctx->icon_sets))
+    {
+        Icon_Set *tmp = ctx->icon_sets + index;
+        if(tmp->size == size)
+        {
+            set = tmp;
+            break;
+        }
+        ++index;
+    }
+    assert(set, "Icon size is not available.");
+
+    Icon *icon = set->icons + type;
+    Loaded_Image *img = assets_get_image(ctx->assets, icon->bitmap);
+    ren_draw_bitmap(ctx->buffer, img, icon->box, pos, color);
+}
+
 // NOTE(dgl): width and height of the element (to calculate overflow)
 internal V2
 ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text, int32 text_count)
@@ -422,54 +451,24 @@ ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text, int32 
 }
 
 internal bool32
-ui_button(Imui_Context *ctx, V4 body, V4 prim_color, V4 hover_color, Font *font, char *label)
+ui_button(Imui_Context *ctx, V4 body, V4 prim_color, V4 hover_color, Icon_Type type, int32 icon_size=-1)
 {
-    Loaded_Image *font_bitmap = assets_get_image(ctx->assets, font->bitmap);
-    Loaded_Font *font_asset = assets_get_font(ctx->assets, font->font_asset);
-
-    assert(font_bitmap, "Initialize font before rendering text");
-    assert(font_asset, "Initialize font before rendering text");
-
-    V4 label_color = ctx->theme.fg_color;
     bool32 result = false;
-    usize label_count = dgl_string_length(label);
 
-    Element_ID id;
-    if(label_count > 0)
+    if(icon_size == -1)
     {
-        id = get_id(ctx, label, label_count);
+        icon_size = ctx->theme.icon_size;
     }
-    else
-    {
-        id = get_id(ctx, &body, sizeof(body));
-    }
+
+    Element_ID id = get_id(ctx, &body, sizeof(body));;
     result = begin_element(ctx, id, body);
 
     if(id == ctx->hot || id == ctx->active) { ren_draw_rectangle(ctx->buffer, body, hover_color); }
     else { ren_draw_rectangle(ctx->buffer, body, prim_color); }
 
-    if(label_count > 0)
-    {
-        int32 width = get_font_width(font_asset, label, dgl_safe_size_to_int32(label_count));
-        char *c = label;
-        uint32 codepoint = 0;
-        int32 x = body.x + ((body.w - width) / 2);
-        int32 y = body.y + ((body.h - dgl_round_real32_to_int32(font->height)) / 2);
-        while(*c)
-        {
-            c += utf8_to_codepoint(c, &codepoint);
+    V2 icon_pos = v2(body.x + (body.w - icon_size) / 2, body.y + (body.h - icon_size) / 2);
 
-            if(codepoint == '\n') { continue; }
-
-            stbtt_bakedchar raw_glyph = get_font_glyph(font_asset, codepoint);
-
-            V4 glyph = rect(raw_glyph.x0, raw_glyph.y0, raw_glyph.x1 - raw_glyph.x0, raw_glyph.y1 - raw_glyph.y0);
-            V2 pos = v2(x + dgl_round_real32_to_int32(raw_glyph.xoff), y + dgl_round_real32_to_int32(raw_glyph.yoff));
-            ren_draw_bitmap(ctx->buffer, font_bitmap, glyph, pos, label_color);
-
-            x += dgl_round_real32_to_int32(raw_glyph.xadvance);
-        }
-    }
+    ui_icon(ctx, type, icon_size, icon_pos, ctx->theme.fg_color);
 
     end_element(ctx);
     return(result);
@@ -486,7 +485,7 @@ ui_menu(Imui_Context *ctx, V4 body, V4 prim_col, V4 sec_col)
     int32 y = body.y + pad.top;
 
     V4 r = rect(x, y, button.w, button.h);
-    if(ui_button(ctx, r, prim_col, sec_col, &ctx->system_font, "X"))
+    if(ui_button(ctx, r, prim_col, sec_col, Icon_Type_Dark))
     {
         V4 temp = ctx->theme.fg_color;
         ctx->theme.fg_color = ctx->theme.bg_color;
@@ -495,14 +494,14 @@ ui_menu(Imui_Context *ctx, V4 body, V4 prim_col, V4 sec_col)
     x += button.w + pad.right;
 
     r = rect(x, y, button.w, button.h);
-    if(ui_button(ctx, r, prim_col, sec_col, &ctx->system_font, "V"))
+    if(ui_button(ctx, r, prim_col, sec_col, Icon_Type_Decrease_Font))
     {
         ctx->desired_text_font_size = dgl_clamp(ctx->desired_text_font_size - em(ctx, 0.5f), em(ctx, 0.5), MAX_FONT_SIZE);
     }
     x += button.w + pad.right;
 
     r = rect(x, y, button.w, button.h);
-    if(ui_button(ctx, r, prim_col, sec_col, &ctx->system_font, "^"))
+    if(ui_button(ctx, r, prim_col, sec_col, Icon_Type_Increase_Font))
     {
          ctx->desired_text_font_size = dgl_clamp(ctx->desired_text_font_size + em(ctx, 0.5f), em(ctx, 0.5), MAX_FONT_SIZE);
     }
@@ -580,7 +579,7 @@ retry:
     }
 
     LOG_DEBUG("Loading bitmap buffer %dx%d", bitmap_width, bitmap_height);
-    assets_allocate_image(assets, font->bitmap, 0, 0, bitmap_width, bitmap_height);
+    assets_allocate_image(assets, font->bitmap, bitmap_width, bitmap_height);
     font_bitmap = assets_get_image(assets, font->bitmap);
 
     real32 s = stbtt_ScaleForMappingEmToPixels(&font_asset->stbfont, 1) / stbtt_ScaleForPixelHeight(&font_asset->stbfont, 1);
@@ -644,6 +643,37 @@ maybe_update_theme(Imui_Context *ctx)
     return(result);
 }
 
+internal Zhc_File_Group *
+find_assets(DGL_Mem_Arena *arena, char *asset_path)
+{
+    Zhc_File_Group *result = 0;
+    DGL_String_Builder tmp_path = dgl_string_builder_init(arena, 256);
+    bool32 path_success = platform.get_data_base_path(&tmp_path);
+    assert(path_success, "Could not load system path");
+
+    dgl_string_append(&tmp_path, asset_path);
+    result = platform.get_directory_filenames(arena, dgl_string_c_style(&tmp_path));
+    return(result);
+}
+
+internal Icon_Set
+initialize_icons(Zhc_Assets *assets, Zhc_File_Info *info, int32 size)
+{
+    Icon_Set result = {};
+    result.size = size;
+    Asset_ID bitmap_id = assets_push_file(assets, info->handle, info->size);
+
+    for(int32 index = 0; index < Icon_Type_Count; ++index)
+    {
+        Icon *icon = result.icons + index;
+        icon->bitmap = bitmap_id;
+        icon->type = cast(Icon_Type)index; // NOTE(dgl): index is here mapped to icon_type
+        icon->box = rect(index * size, 0, size, size);
+    }
+
+    return(result);
+}
+
 Imui_Context *
 ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
 {
@@ -656,28 +686,54 @@ ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
 
     result->assets = assets_begin_allocate(permanent_arena, megabytes(24));
     {
-        DGL_String_Builder tmp_path_builder = dgl_string_builder_init(transient_arena, 256);
-        bool32 base_path_success = platform.get_data_base_path(&tmp_path_builder);
-        assert(base_path_success, "Could not load system path");
-
-        dgl_string_append(&tmp_path_builder, "fonts");
-        char *tmp_path = dgl_string_c_style(&tmp_path_builder);
-        Zhc_File_Group *group = platform.get_directory_filenames(transient_arena, tmp_path);
-
+        // NOTE(dgl): initializing fonts
+        Zhc_File_Group *font_group = find_assets(transient_arena, "fonts");
+        assert(font_group->count >= 1, "No font file found");
+        result->system_font.font_asset = assets_push_file(result->assets, font_group->first_file_info->handle, font_group->first_file_info->size);
         // TODO(dgl): make it possible to update the asset_file info to change font files, e.g. for network load?
-        assert(group->count > 0, "No font file found");
-        result->system_font.font_asset = assets_push_file(result->assets, group->first_file_info->handle, group->first_file_info->size);
-        result->text_font.font_asset = assets_push_file(result->assets, group->first_file_info->next->handle, group->first_file_info->next->size);
+        result->text_font.font_asset = assets_push_file(result->assets, font_group->first_file_info->next->handle, font_group->first_file_info->next->size);
 
         result->text_font.bitmap = assets_push(result->assets);
         result->system_font.bitmap = assets_push(result->assets);
+
+        // NOTE(dgl): initializing icons
+        Zhc_File_Group *icon_group = find_assets(transient_arena, "images");
+        Zhc_File_Info *icon_set = icon_group->first_file_info;
+
+        int32 index = 0;
+        while(icon_set && index < array_count(result->icon_sets))
+        {
+            // TODO(dgl): @@performance But only executed once during init.
+            if(strcmp(icon_set->filename, "16x16.png") == 0)
+            {
+                result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 16);
+            }
+            else if(strcmp(icon_set->filename, "24x24.png") == 0)
+            {
+                result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 24);
+            }
+            else if(strcmp(icon_set->filename, "32x32.png") == 0)
+            {
+                result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 32);
+            }
+            else if(strcmp(icon_set->filename, "64x64.png") == 0)
+            {
+                result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 64);
+            }
+            else if(strcmp(icon_set->filename, "128x128.png") == 0)
+            {
+                result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 128);
+            }
+
+            icon_set = icon_set->next;
+        }
     }
     assets_end_allocate(result->assets);
 
-    assets_load_font(result->assets, result->system_font.font_asset);
-    ui_resize_font(result->assets, &result->system_font, em(result, 1));
-    assets_load_font(result->assets, result->text_font.font_asset);
-    ui_resize_font(result->assets, &result->text_font, em(result, 1));
+    // TODO(dgl): temp
+    assets_load_image(result->assets, result->icon_sets[0].icons[0].bitmap);
+
+    // NOTE(dgl): fontsize is set during context update
 
     return(result);
 }
@@ -699,6 +755,18 @@ ui_context_update(Imui_Context *ctx, Zhc_Input *input, Zhc_Offscreen_Buffer *buf
     {
         ui_resize_font(ctx->assets, &ctx->system_font, ctx->theme.font_size);
 
-        // TODO(dgl): reload necessary icons
+        if(ctx->desired_text_font_size != ctx->text_font.size)
+        {
+            ui_resize_font(ctx->assets, &ctx->text_font, ctx->desired_text_font_size);
+        }
+
+        // NOTE(dgl): unload all assets not needed for this theme. If sizes are still needed,
+        // we reload them on demand @@performance
+        for(int32 index = 0; index < array_count(ctx->icon_sets); ++index)
+        {
+            Icon_Set *set = ctx->icon_sets + index;
+            if(set->size == ctx->theme.icon_size) { continue; }
+            assets_unload(ctx->assets, set->icons[0].bitmap);
+        }
     }
 }
