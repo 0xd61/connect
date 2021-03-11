@@ -18,14 +18,24 @@ enum Screen_Size
     Screen_Size_XL = 1536
 };
 
+struct Button_Theme
+{
+    int32 icon_size;
+    V4 icon_color;
+    V4 hover_color;
+    V4 bg_color;
+};
+
 struct Theme
 {
-    Screen_Size type;
+    // NOTE(dgl): sizes are the recommended sizes for
+    // the screen size.
     int32 font_size;
     int32 icon_size;
-    V2 menu_size;
-    V4 fg_color;
+    V4 primary_color;
+    //V4 secondary_color;
     V4 bg_color;
+    V2 menu_size;
 };
 
 enum Icon_Type
@@ -74,6 +84,9 @@ struct Element_State
 struct Imui_Context
 {
     V2 window;
+    Screen_Size screen;
+    bool32 is_dark;
+
     Element_ID active;
     Element_ID hot;
     // NOTE(dgl): the last hot element of the last frame
@@ -81,7 +94,6 @@ struct Imui_Context
     Element_ID top_most_hot;
     bool32 hot_updated;
 
-    Theme theme;
     Zhc_Assets *assets;
 
     Icon_Set icon_sets[5]; /* 16, 25, 32, 64, 128 */
@@ -96,5 +108,7 @@ struct Imui_Context
     Stack(Element_ID) id_stack;
     Stack(Element_State) element_state_list;
 };
+
+internal Theme get_default_theme(Screen_Size screen);
 
 #endif // ZHC_UI

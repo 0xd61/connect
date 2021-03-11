@@ -3,7 +3,7 @@
 # Stop at errors
 set -e
 
-CommonCompilerFlags="-O0 -g -ggdb -fdiagnostics-color=always -std=c++11 -fno-rtti -fno-exceptions -ffast-math -msse4.1
+CommonCompilerFlags="-O0 -g -ggdb -fdiagnostics-color=always -std=c++11 -fno-rtti -fno-exceptions -ffast-math -msse4.1 -msse2
 -Wall -Werror -Wconversion
 -Wno-writable-strings -Wno-gnu-anonymous-struct
 -Wno-padded -Wno-string-conversion

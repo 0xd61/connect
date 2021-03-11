@@ -172,7 +172,11 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
     // NOTE(dgl): draw backplate
     V4 screen = rect(0, 0, ui_ctx->window.w, ui_ctx->window.h);
-    ren_draw_rectangle(ui_ctx->buffer, screen, ui_ctx->theme.bg_color);
+
+    Theme default_theme = get_default_theme(ui_ctx->screen);
+    V4 bg_color = default_theme.bg_color;
+    if(ui_ctx->is_dark) { bg_color = default_theme.primary_color; }
+    ren_draw_rectangle(ui_ctx->buffer, screen, bg_color);
 
     // NOTE(dgl): draw file, if it is available
     if(state->active_file.data)
@@ -180,19 +184,18 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         ui_main_text(ui_ctx, (char *)state->active_file.data, state->active_file.info->size);
     }
 
-    ui_menu(ui_ctx,
-            rect(ui_ctx->window.w - 300, 0, 300, 100),
-            color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.3f),
-            color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.2f));
+    ui_menu(ui_ctx, rect(ui_ctx->window.w - 300, 0, 300, 100));
 
     // TODO(dgl): use command buffer instead of desired file etc..
     int32 button_w = 100;
     int32 button_h = 400;
+    Button_Theme next_prev_button_theme = default_button_theme(ui_ctx);
+    next_prev_button_theme.icon_size = 64;
+
     if(ui_button(ui_ctx,
                  rect(ui_ctx->window.w - button_w, (ui_ctx->window.h - button_h)/2, button_w, button_h),
-                 color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.3f),
-                 color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.2f),
-                 Icon_Type_Next, 64) ||
+                 next_prev_button_theme,
+                 Icon_Type_Next) ||
        input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Right) ||
        input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Enter) ||
        input_pressed(ui_ctx->input, ' '))
@@ -205,9 +208,8 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
     if(ui_button(ui_ctx,
                  rect(0, (ui_ctx->window.h - button_h)/2, button_w, button_h),
-                 color(ui_ctx->theme.bg_color.r, ui_ctx->theme.bg_color.g, ui_ctx->theme.bg_color.b, 0.3f),
-                 color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.2f),
-                 Icon_Type_Previous, 64) ||
+                 next_prev_button_theme,
+                 Icon_Type_Previous) ||
        input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Left))
     {
         if(state->files)
@@ -348,7 +350,11 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
     // NOTE(dgl): draw backplate
     V4 screen = rect(0, 0, ui_ctx->window.w, ui_ctx->window.h);
-    ren_draw_rectangle(ui_ctx->buffer, screen, ui_ctx->theme.bg_color);
+
+    Theme default_theme = get_default_theme(ui_ctx->screen);
+    V4 bg_color = default_theme.bg_color;
+    if(ui_ctx->is_dark) { bg_color = default_theme.primary_color; }
+    ren_draw_rectangle(ui_ctx->buffer, screen, bg_color);
 
     // NOTE(dgl): draw file, if it is available
     if(state->active_file.data)
@@ -356,10 +362,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         ui_main_text(ui_ctx, (char *)state->active_file.data, state->active_file.info->size);
     }
 
-    ui_menu(ui_ctx,
-            rect(ui_ctx->window.w - 300, 0, 300, 100),
-            color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.025f),
-            color(ui_ctx->theme.fg_color.r, ui_ctx->theme.fg_color.g, ui_ctx->theme.fg_color.b, 0.5f));
+    ui_menu(ui_ctx, rect(ui_ctx->window.w - 300, 0, 300, 100));
 
     // NOTE(dgl): update font size, if requested
     if(ui_ctx->desired_text_font_size != ui_ctx->text_font.size)

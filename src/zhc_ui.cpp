@@ -17,18 +17,18 @@ em(Theme theme, real32 value)
 internal inline int32
 em(Imui_Context *ctx, real32 value)
 {
-    return(em(ctx->theme, value));
+    Theme theme = get_default_theme(ctx->screen);
+    return(em(theme, value));
 }
 
 internal Theme
 default_theme_xs()
 {
     Theme result = {};
-    result.type = Screen_Size_XS;
     result.font_size = 16;
     result.icon_size = 24;
     result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
-    result.fg_color = color(0.1f, 0.1f, 0.1f, 1.0f);
+    result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
     return(result);
@@ -38,11 +38,10 @@ internal Theme
 default_theme_sm()
 {
     Theme result = {};
-    result.type = Screen_Size_SM;
     result.font_size = 16;
     result.icon_size = 24;
     result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
-    result.fg_color = color(0.1f, 0.1f, 0.1f, 1.0f);
+    result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
     return(result);
@@ -52,11 +51,10 @@ internal Theme
 default_theme_md()
 {
     Theme result = {};
-    result.type = Screen_Size_MD;
     result.font_size = 18;
     result.icon_size = 32;
     result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
-    result.fg_color = color(0.1f, 0.1f, 0.1f, 1.0f);
+    result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
     return(result);
@@ -66,11 +64,10 @@ internal Theme
 default_theme_lg()
 {
     Theme result = {};
-    result.type = Screen_Size_LG;
     result.font_size = 21;
     result.icon_size = 32;
     result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
-    result.fg_color = color(0.1f, 0.1f, 0.1f, 1.0f);
+    result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
     return(result);
@@ -80,12 +77,77 @@ internal Theme
 default_theme_xl()
 {
     Theme result = {};
-    result.type = Screen_Size_XL;
     result.font_size = 24;
     result.icon_size = 32;
     result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
-    result.fg_color = color(0.1f, 0.1f, 0.1f, 1.0f);
+    result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
+
+    return(result);
+}
+
+internal Theme
+get_default_theme(Screen_Size screen)
+{
+    Theme result = {};
+
+    switch(screen)
+    {
+        case Screen_Size_XL: result = default_theme_xl(); break;
+        case Screen_Size_LG: result = default_theme_lg(); break;
+        case Screen_Size_MD: result = default_theme_md(); break;
+        case Screen_Size_SM: result = default_theme_sm(); break;
+        default: result = default_theme_xs();
+    }
+
+    return(result);
+}
+
+internal Button_Theme
+default_button_theme(Imui_Context *ctx)
+{
+    Button_Theme result = {};
+
+    Theme default_theme = get_default_theme(ctx->screen);
+
+    result.icon_color = default_theme.primary_color;
+    result.icon_size = default_theme.icon_size;
+    result.hover_color = default_theme.primary_color;
+    result.hover_color.a = 0.1f;
+    result.bg_color = color(default_theme.bg_color.r, default_theme.bg_color.g, default_theme.bg_color.b, 0.3f);
+    result.bg_color.a = 0.3f;
+
+    if(ctx->is_dark)
+    {
+        result.icon_color = default_theme.bg_color;
+
+        V4 tmp = result.bg_color;
+        result.bg_color = result.hover_color;
+        result.hover_color = tmp;
+
+        result.hover_color.a = 0.1f;
+        result.bg_color.a = 0.3f;
+    }
+
+    return(result);
+}
+
+internal bool32
+maybe_update_screen_size(Imui_Context *ctx)
+{
+    bool32 result = false;
+    Screen_Size screen = Screen_Uninitialized;
+    if(ctx->window.w >= Screen_Size_XL) { screen = Screen_Size_XL; }
+    else if(ctx->window.w >= Screen_Size_LG) { screen = Screen_Size_LG; }
+    else if(ctx->window.w >= Screen_Size_MD) { screen = Screen_Size_MD; }
+    else if(ctx->window.w >= Screen_Size_SM) { screen = Screen_Size_SM; }
+    else { screen = Screen_Size_XS; }
+
+    if(screen != ctx->screen)
+    {
+        ctx->screen = screen;
+        result = true;
+    }
 
     return(result);
 }
@@ -382,6 +444,7 @@ ui_icon(Imui_Context *ctx, Icon_Type type, int32 size, V2 pos, V4 color)
         }
         ++index;
     }
+
     assert(set, "Icon size is not available.");
 
     Icon *icon = set->icons + type;
@@ -451,31 +514,26 @@ ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text, int32 
 }
 
 internal bool32
-ui_button(Imui_Context *ctx, V4 body, V4 prim_color, V4 hover_color, Icon_Type type, int32 icon_size=-1)
+ui_button(Imui_Context *ctx, V4 body, Button_Theme theme, Icon_Type type)
 {
     bool32 result = false;
-
-    if(icon_size == -1)
-    {
-        icon_size = ctx->theme.icon_size;
-    }
 
     Element_ID id = get_id(ctx, &body, sizeof(body));;
     result = begin_element(ctx, id, body);
 
-    if(id == ctx->hot || id == ctx->active) { ren_draw_rectangle(ctx->buffer, body, hover_color); }
-    else { ren_draw_rectangle(ctx->buffer, body, prim_color); }
+    if(id == ctx->hot || id == ctx->active) { ren_draw_rectangle(ctx->buffer, body, theme.hover_color); }
+    else { ren_draw_rectangle(ctx->buffer, body, theme.bg_color); }
 
-    V2 icon_pos = v2(body.x + (body.w - icon_size) / 2, body.y + (body.h - icon_size) / 2);
+    V2 icon_pos = v2(body.x + (body.w - theme.icon_size) / 2, body.y + (body.h - theme.icon_size) / 2);
 
-    ui_icon(ctx, type, icon_size, icon_pos, ctx->theme.fg_color);
+    ui_icon(ctx, type, theme.icon_size, icon_pos, theme.icon_color);
 
     end_element(ctx);
     return(result);
 }
 
 internal void
-ui_menu(Imui_Context *ctx, V4 body, V4 prim_col, V4 sec_col)
+ui_menu(Imui_Context *ctx, V4 body)
 {
     V4 pad = {.top=20, .bottom=20, .right=20, .left=20};
     V2 button = {};
@@ -484,24 +542,26 @@ ui_menu(Imui_Context *ctx, V4 body, V4 prim_col, V4 sec_col)
     int32 x = body.x + pad.left;
     int32 y = body.y + pad.top;
 
+    Button_Theme button_theme = default_button_theme(ctx);
+
     V4 r = rect(x, y, button.w, button.h);
-    if(ui_button(ctx, r, prim_col, sec_col, Icon_Type_Dark))
+    Icon_Type mode_swap = Icon_Type_Dark;
+    if(ctx->is_dark) { mode_swap = Icon_Type_Light; }
+    if(ui_button(ctx, r, button_theme, mode_swap))
     {
-        V4 temp = ctx->theme.fg_color;
-        ctx->theme.fg_color = ctx->theme.bg_color;
-        ctx->theme.bg_color = temp;
+        ctx->is_dark = !ctx->is_dark;
     }
     x += button.w + pad.right;
 
     r = rect(x, y, button.w, button.h);
-    if(ui_button(ctx, r, prim_col, sec_col, Icon_Type_Decrease_Font))
+    if(ui_button(ctx, r, button_theme, Icon_Type_Decrease_Font))
     {
         ctx->desired_text_font_size = dgl_clamp(ctx->desired_text_font_size - em(ctx, 0.5f), em(ctx, 0.5), MAX_FONT_SIZE);
     }
     x += button.w + pad.right;
 
     r = rect(x, y, button.w, button.h);
-    if(ui_button(ctx, r, prim_col, sec_col, Icon_Type_Increase_Font))
+    if(ui_button(ctx, r, button_theme, Icon_Type_Increase_Font))
     {
          ctx->desired_text_font_size = dgl_clamp(ctx->desired_text_font_size + em(ctx, 0.5f), em(ctx, 0.5), MAX_FONT_SIZE);
     }
@@ -521,7 +581,11 @@ ui_main_text(Imui_Context *ctx, char *text, usize text_count)
     begin_element(ctx, id, body);
 
     body.y -= c->scroll_pos;
-    c->content = ui_textarea(ctx, &ctx->text_font, body, ctx->theme.fg_color, text, dgl_safe_size_to_int32(text_count));
+
+    Theme default_theme = get_default_theme(ctx->screen);
+    V4 text_color = default_theme.primary_color;
+    if(ctx->is_dark) { text_color = default_theme.bg_color; }
+    c->content = ui_textarea(ctx, &ctx->text_font, body, text_color, text, dgl_safe_size_to_int32(text_count));
 
     if(c->content.h > body.h)
     {
@@ -614,33 +678,6 @@ retry:
     // make tab and newline glyphs invisible
     font_asset->glyphs[cast(int32)'\t'].x1 = font_asset->glyphs[cast(int32)'\t'].x0;
     font_asset->glyphs[cast(int32)'\n'].x1 = font_asset->glyphs[cast(int32)'\n'].x0;
-}
-
-internal bool32
-maybe_update_theme(Imui_Context *ctx)
-{
-    bool32 result = false;
-
-    Screen_Size screen = Screen_Uninitialized;
-    if(ctx->window.w >= Screen_Size_XL) { screen = Screen_Size_XL; }
-    else if(ctx->window.w >= Screen_Size_LG) { screen = Screen_Size_LG; }
-    else if(ctx->window.w >= Screen_Size_MD) { screen = Screen_Size_MD; }
-    else if(ctx->window.w >= Screen_Size_SM) { screen = Screen_Size_SM; }
-    else { screen = Screen_Size_XS; }
-
-    if(screen != ctx->theme.type)
-    {
-        switch(screen)
-        {
-            case Screen_Size_XL: ctx->theme = default_theme_xl(); break;
-            case Screen_Size_LG: ctx->theme = default_theme_lg(); break;
-            case Screen_Size_MD: ctx->theme = default_theme_md(); break;
-            case Screen_Size_SM: ctx->theme = default_theme_sm(); break;
-            default: ctx->theme = default_theme_xs();
-        }
-        result = true;
-    }
-    return(result);
 }
 
 internal Zhc_File_Group *
@@ -751,9 +788,10 @@ ui_context_update(Imui_Context *ctx, Zhc_Input *input, Zhc_Offscreen_Buffer *buf
     ctx->hot_updated = false;
 
     // NOTE(dgl): update theme if the screen size has changed from desktop to e.g. mobile
-    if(maybe_update_theme(ctx))
+    if(maybe_update_screen_size(ctx))
     {
-        ui_resize_font(ctx->assets, &ctx->system_font, ctx->theme.font_size);
+        Theme default_theme = get_default_theme(ctx->screen);
+        ui_resize_font(ctx->assets, &ctx->system_font, default_theme.font_size);
 
         if(ctx->desired_text_font_size != ctx->text_font.size)
         {
@@ -765,7 +803,7 @@ ui_context_update(Imui_Context *ctx, Zhc_Input *input, Zhc_Offscreen_Buffer *buf
         for(int32 index = 0; index < array_count(ctx->icon_sets); ++index)
         {
             Icon_Set *set = ctx->icon_sets + index;
-            if(set->size == ctx->theme.icon_size) { continue; }
+            if(set->size == default_theme.icon_size) { continue; }
             assets_unload(ctx->assets, set->icons[0].bitmap);
         }
     }
