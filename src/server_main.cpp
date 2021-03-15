@@ -4,6 +4,9 @@
 #include "zhc_lib.cpp"
 
 #ifdef __ANDROID__
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
+#include <jni.h>
 #include <SDL.h>
 #include <SDL_net.h>
 #else
@@ -19,6 +22,7 @@
 // NOTE(dgl): On Windows this is only included in the MinGW compiler,
 // not in Microsoft Visual C++.
 #include <dirent.h> /* opendir, readdir */
+#include <errno.h>
 
 #include "sdl2_api.cpp"
 

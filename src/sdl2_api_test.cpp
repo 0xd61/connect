@@ -5,6 +5,7 @@
 
 #include "zhc_platform.h"
 #include <dirent.h> /* opendir, readdir */
+#include <errno.h>
 #include "sdl2_api.cpp"
 
 #define DGL_IMPLEMENTATION

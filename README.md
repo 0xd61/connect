@@ -52,5 +52,5 @@ system-images;android-26;default;x86_64 | 1            | Intel x86 Atom_64 Syste
   The logmessages on android are tagged with co.degit.connect. You can view them via `adb logcat` with the following command:
 
   ```
-  adb logcat -v color co.degit.connect:V *:E
+  adb logcat -v color SDL:V co.degit.connect:V *:E
   ```

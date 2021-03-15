@@ -420,9 +420,96 @@ allocate_file_info(Zhc_File_Group *group, char *filename)
     return(result);
 }
 
+#if __ANDROID__
+ZHC_GET_DIRECTORY_FILENAMES(android_get_asset_directory_filenames)
+{
+    Zhc_File_Group *result = 0;
+
+    // NOTE(dgl): get asset manager (same as Internal_Android_Create_AssetManager in SDL_android.c)
+    // No idea if this is the correy way. But it works for now.
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    assert(env, "Failed to get env");
+
+    // retrieve the Java instance of the SDLActivity
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    assert(activity, "Failed to get activity");
+
+    // find the Java class of the activity. It should be SDLActivity or a subclass of it.
+    jclass activity_class = env->GetObjectClass(activity);
+
+    jmethodID midGetContext = env->GetStaticMethodID(activity_class, "getContext","()Landroid/content/Context;");
+
+    /* context = SDLActivity.getContext(); */
+    jobject context = env->CallStaticObjectMethod(activity_class, midGetContext);
+    jclass context_class = env->GetObjectClass(context);
+
+    /* javaAssetManager = context.getAssets(); */
+    jmethodID midAssetManager = env->GetMethodID(context_class, "getAssets", "()Landroid/content/res/AssetManager;");
+    jobject javaAssetManager = env->CallObjectMethod(context, midAssetManager);
+    jobject javaAssetManagerRef = env->NewLocalRef(javaAssetManager);
+    AAssetManager *asset_manager = AAssetManager_fromJava(env, javaAssetManagerRef);
+
+    assert(asset_manager, "Could not create an asset manager");
+
+    // NOTE(dgl): retrieving the files of the asset directory with the android asset
+    // manager
+    AAssetDir *dir = AAssetManager_openDir(asset_manager, path);
+    if(dir)
+    {
+        result = dgl_mem_arena_push_struct(arena, Zhc_File_Group);
+        result->arena = arena;
+
+        usize dirpath_count = dgl_string_length(path);
+        if(path[dirpath_count - 1] != '/')
+        {
+            dirpath_count++;
+        }
+        result->dirpath = dgl_mem_arena_push_array(arena, char, dirpath_count + 1);
+        dgl_memcpy(result->dirpath, path, dirpath_count);
+        result->dirpath[dirpath_count - 1] = '/';
+        result->dirpath[dirpath_count] = '\0';
+
+        const char *entry = AAssetDir_getNextFileName(dir);
+        while(entry)
+        {
+            if(entry[0] == '.' &&
+               entry[1] == '\0'){ continue; }
+
+            if(entry[0] == '.' &&
+               entry[1] == '.' &&
+               entry[2] == '\0'){ continue; }
+
+            LOG_DEBUG("Found file: %s", entry);
+
+            Zhc_File_Info *info = allocate_file_info(result, cast(char *)entry);
+            info->size = sdl_file_size(&info->handle);
+
+            entry = AAssetDir_getNextFileName(dir);
+        }
+
+        AAssetDir_close(dir);
+    }
+    else
+    {
+        LOG("Failed opening path: %s", path);
+    }
+
+    env->DeleteLocalRef(activity);
+    env->DeleteLocalRef(activity_class);
+    env->DeleteLocalRef(context);
+    env->DeleteLocalRef(context_class);
+    env->DeleteLocalRef(javaAssetManager);
+    env->DeleteLocalRef(javaAssetManagerRef);
+
+    return(result);
+}
+#else
 ZHC_GET_DIRECTORY_FILENAMES(get_directory_filenames)
 {
     Zhc_File_Group *result = 0;
+
+    // TODO(dgl): get android assets path
+
     DIR *dir = opendir(path);
     if(dir)
     {
@@ -462,12 +549,21 @@ ZHC_GET_DIRECTORY_FILENAMES(get_directory_filenames)
                entry->d_name[1] == '.' &&
                entry->d_name[2] == '\0'){ continue; }
 
+            LOG_DEBUG("Found file: %s", entry->d_name);
+
             Zhc_File_Info *info = allocate_file_info(result, entry->d_name);
             info->size = sdl_file_size(&info->handle);
         }
     }
+    else
+    {
+        LOG("Failed opening path: %s with error: %d, %s", path, errno, strerror(errno));
+    }
+
+
     return(result);
 }
+#endif // __ANDROID__
 
 ZHC_GET_DATA_BASE_PATH(sdl_internal_storage_path)
 {

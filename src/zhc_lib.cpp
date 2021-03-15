@@ -184,7 +184,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         ui_main_text(ui_ctx, (char *)state->active_file.data, state->active_file.info->size);
     }
 
-    ui_menu(ui_ctx, rect(ui_ctx->window.w - 300, 0, 300, 100));
+    ui_menu(ui_ctx, rect(ui_ctx->window.w - default_theme.menu_size.x, 0, default_theme.menu_size.x, default_theme.menu_size.y));
 
     // TODO(dgl): use command buffer instead of desired file etc..
     int32 button_w = 100;
@@ -313,6 +313,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     // to know which element is hot if they are overlapping
     // on the next frame
     ui_ctx->top_most_hot = ui_ctx->hot;
+    dgl_mem_arena_free_all(&state->transient_arena);
 }
 
 void
@@ -324,9 +325,9 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     Lib_State *state = cast(Lib_State *)memory->permanent_storage;
     if(!state->is_initialized)
     {
-        LOG_DEBUG("Lib_State size: %lld, Available memory: %lld", sizeof(*state), memory->permanent_storage_size);
         dgl_mem_arena_init(&state->permanent_arena, (uint8 *)memory->permanent_storage + sizeof(*state), ((DGL_Mem_Index)memory->permanent_storage_size - sizeof(*state)));
         dgl_mem_arena_init(&state->transient_arena, (uint8 *)memory->transient_storage, (DGL_Mem_Index)memory->transient_storage_size);
+        LOG_DEBUG("Permanent memory: %p (%lld), Lib_State size: %lld, permanent_arena: %p, transient_arena: %p", memory->permanent_storage, memory->permanent_storage_size, sizeof(*state), state->permanent_arena.base, state->transient_arena.base);
 
         state->ui_ctx = ui_context_init(&state->permanent_arena, &state->transient_arena);
 
@@ -362,7 +363,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         ui_main_text(ui_ctx, (char *)state->active_file.data, state->active_file.info->size);
     }
 
-    ui_menu(ui_ctx, rect(ui_ctx->window.w - 300, 0, 300, 100));
+    ui_menu(ui_ctx, rect(ui_ctx->window.w - default_theme.menu_size.x, 0, default_theme.menu_size.x, default_theme.menu_size.y));
 
     // NOTE(dgl): update font size, if requested
     if(ui_ctx->desired_text_font_size != ui_ctx->text_font.size)
@@ -450,4 +451,5 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     // to know which element is hot if they are overlapping
     // on the next frame
     ui_ctx->top_most_hot = ui_ctx->hot;
+    dgl_mem_arena_free_all(&state->transient_arena);
 }

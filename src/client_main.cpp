@@ -4,6 +4,9 @@
 #include "zhc_lib.cpp"
 
 #ifdef __ANDROID__
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
+#include <jni.h>
 #include <SDL.h>
 #include <SDL_net.h>
 #else
@@ -19,6 +22,7 @@
 // NOTE(dgl): On Windows this is only included in the MinGW compiler,
 // not in Microsoft Visual C++.
 #include <dirent.h> /* opendir, readdir */
+#include <errno.h>
 
 #include "sdl2_api.cpp"
 
@@ -62,11 +66,13 @@ int main(int argc, char *argv[])
     void *base_address = 0;
 #endif
 
-    usize permanent_memory_size = megabytes(64);
+    usize permanent_memory_size = megabytes(48);
     usize transient_memory_size = megabytes(16);
 
+    usize total_size = permanent_memory_size + transient_memory_size;
+
     // NOTE(dgl): Must be cleared to zero!!
-    void *memory_block = mmap(base_address, permanent_memory_size + transient_memory_size,
+    void *memory_block = mmap(base_address, total_size,
                               PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 
     if(memory_block != cast(void *)-1)
@@ -74,14 +80,20 @@ int main(int argc, char *argv[])
         void *permanent_memory_block = memory_block;
         void *transient_memory_block = cast(uint8 *)memory_block + permanent_memory_size;
 
+        LOG_DEBUG("Memory block %p (%zu), permanent memory %p (%zu), transient memory %p (%zu)", memory_block, total_size, permanent_memory_block, permanent_memory_size, transient_memory_block, transient_memory_size);
+
         Zhc_Memory memory = {};
         memory.permanent_storage_size = permanent_memory_size;
         memory.permanent_storage = permanent_memory_block;
         memory.transient_storage_size = transient_memory_size;
         memory.transient_storage = transient_memory_block;
+#if __ANDROID__
+        memory.api.get_directory_filenames = android_get_asset_directory_filenames;
+#else
+        memory.api.get_directory_filenames = get_directory_filenames;
+#endif
         memory.api.read_entire_file = sdl_read_entire_file;
         memory.api.file_size = sdl_file_size;
-        memory.api.get_directory_filenames = get_directory_filenames;
         memory.api.get_data_base_path = sdl_internal_storage_path;
         memory.api.get_user_data_base_path = sdl_external_storage_path;
         memory.api.open_socket = sdl_net_client_setup_socket;

@@ -27,7 +27,7 @@ default_theme_xs()
     Theme result = {};
     result.font_size = 16;
     result.icon_size = 24;
-    result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
+    result.menu_size = { .w=em(result, 15.0f), .h=em(result, 5.0f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -40,7 +40,7 @@ default_theme_sm()
     Theme result = {};
     result.font_size = 16;
     result.icon_size = 24;
-    result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
+    result.menu_size = { .w=em(result, 15.0f), .h=em(result, 5.0f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -53,7 +53,7 @@ default_theme_md()
     Theme result = {};
     result.font_size = 18;
     result.icon_size = 32;
-    result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
+    result.menu_size = { .w=em(result, 15.0f), .h=em(result, 5.0f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -66,7 +66,7 @@ default_theme_lg()
     Theme result = {};
     result.font_size = 21;
     result.icon_size = 32;
-    result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
+    result.menu_size = { .w=em(result, 15.0f), .h=em(result, 5.0f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -79,7 +79,7 @@ default_theme_xl()
     Theme result = {};
     result.font_size = 24;
     result.icon_size = 32;
-    result.menu_size = { .w=em(result, 8.0f), .h=em(result, 2.0f)};
+    result.menu_size = { .w=em(result, 15.0f), .h=em(result, 5.0f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -690,6 +690,7 @@ find_assets(DGL_Mem_Arena *arena, char *asset_path)
 
     dgl_string_append(&tmp_path, asset_path);
     result = platform.get_directory_filenames(arena, dgl_string_c_style(&tmp_path));
+
     return(result);
 }
 
@@ -714,6 +715,7 @@ initialize_icons(Zhc_Assets *assets, Zhc_File_Info *info, int32 size)
 Imui_Context *
 ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
 {
+    LOG_DEBUG("Permanent arena %p, Transient arena %p", permanent_arena, transient_arena);
     Imui_Context *result = dgl_mem_arena_push_struct(permanent_arena, Imui_Context);
     result->id_stack.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
     result->id_stack.memory = dgl_mem_arena_push_array(permanent_arena, Element_ID, result->id_stack.count);
@@ -724,51 +726,57 @@ ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
     result->assets = assets_begin_allocate(permanent_arena, megabytes(24));
     {
         // NOTE(dgl): initializing fonts
+        // TODO(dgl): @here opendir does not find the directories.
         Zhc_File_Group *font_group = find_assets(transient_arena, "fonts");
-        assert(font_group->count >= 1, "No font file found");
-        result->system_font.font_asset = assets_push_file(result->assets, font_group->first_file_info->handle, font_group->first_file_info->size);
-        // TODO(dgl): make it possible to update the asset_file info to change font files, e.g. for network load?
-        result->text_font.font_asset = assets_push_file(result->assets, font_group->first_file_info->next->handle, font_group->first_file_info->next->size);
+        if(font_group)
+        {
+            assert(font_group->count >= 1, "No font file found");
+            result->system_font.font_asset = assets_push_file(result->assets, font_group->first_file_info->handle, font_group->first_file_info->size);
+            // TODO(dgl): make it possible to update the asset_file info to change font files, e.g. for network load?
+            result->text_font.font_asset = assets_push_file(result->assets, font_group->first_file_info->handle, font_group->first_file_info->size);
 
-        result->text_font.bitmap = assets_push(result->assets);
-        result->system_font.bitmap = assets_push(result->assets);
+            result->system_font.bitmap = assets_push(result->assets);
+            result->text_font.bitmap = assets_push(result->assets);
+        }
 
         // NOTE(dgl): initializing icons
         Zhc_File_Group *icon_group = find_assets(transient_arena, "images");
-        Zhc_File_Info *icon_set = icon_group->first_file_info;
-
-        int32 index = 0;
-        while(icon_set && index < array_count(result->icon_sets))
+        if(icon_group)
         {
-            // TODO(dgl): @@performance But only executed once during init.
-            if(strcmp(icon_set->filename, "16x16.png") == 0)
-            {
-                result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 16);
-            }
-            else if(strcmp(icon_set->filename, "24x24.png") == 0)
-            {
-                result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 24);
-            }
-            else if(strcmp(icon_set->filename, "32x32.png") == 0)
-            {
-                result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 32);
-            }
-            else if(strcmp(icon_set->filename, "64x64.png") == 0)
-            {
-                result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 64);
-            }
-            else if(strcmp(icon_set->filename, "128x128.png") == 0)
-            {
-                result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 128);
-            }
+            Zhc_File_Info *icon_set = icon_group->first_file_info;
 
-            icon_set = icon_set->next;
+            int32 index = 0;
+            while(icon_set && index < array_count(result->icon_sets))
+            {
+                LOG_DEBUG("Filename %s", icon_set->filename);
+                // TODO(dgl): @@performance But only executed once during init.
+                if(strcmp(icon_set->filename, "16x16.png") == 0)
+                {
+                    result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 16);
+                }
+                else if(strcmp(icon_set->filename, "24x24.png") == 0)
+                {
+                    result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 24);
+                }
+                else if(strcmp(icon_set->filename, "32x32.png") == 0)
+                {
+                    result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 32);
+                }
+                else if(strcmp(icon_set->filename, "64x64.png") == 0)
+                {
+                    result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 64);
+                }
+                else if(strcmp(icon_set->filename, "128x128.png") == 0)
+                {
+                    result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 128);
+                }
+
+                icon_set = icon_set->next;
+            }
         }
     }
     assets_end_allocate(result->assets);
-
-    // TODO(dgl): temp
-    assets_load_image(result->assets, result->icon_sets[0].icons[0].bitmap);
+    LOG_DEBUG("End allocating assets");
 
     // NOTE(dgl): fontsize is set during context update
 

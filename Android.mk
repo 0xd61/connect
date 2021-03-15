@@ -16,7 +16,7 @@ LOCAL_SRC_FILES :=  client_main.cpp
 
 LOCAL_SHARED_LIBRARIES := SDL2 SDL2_net
 
-LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -llog
+LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -llog -landroid
 
 include $(BUILD_SHARED_LIBRARY)
 

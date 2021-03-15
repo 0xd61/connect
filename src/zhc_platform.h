@@ -4,14 +4,23 @@
 #define DGL_STATIC
 #define DGL_DEBUG ZHC_DEBUG
 #include "dgl.h"
-#define assert(cond, msg) dgl_assert(cond, msg)
 #define cast(type) dgl_cast(type)
 
 #if __ANDROID__
 #include <android/log.h>
+#define assert(cond, msg) do \
+{                                                                              \
+    if (!(cond))                                                               \
+    {                                                                          \
+      __android_log_print(ANDROID_LOG_ERROR, "co.degit.connect", "Fatal error: %s:%d: dgl_assertion '%s' failed with %s\n",   \
+      __FILE__, __LINE__, #cond, #msg);                                        \
+      __builtin_trap();                                                        \
+    }                                                                          \
+} while(0)
 #define LOG(...) __android_log_print(ANDROID_LOG_INFO, "co.degit.connect", __VA_ARGS__);
 #define LOG_DEBUG(...) __android_log_print(ANDROID_LOG_DEBUG, "co.degit.connect", __VA_ARGS__);
 #else
+#define assert(cond, msg) dgl_assert(cond, msg)
 #define LOG(...) DGL_LOG(__VA_ARGS__)
 #define LOG_DEBUG(...) DGL_LOG_DEBUG(__VA_ARGS__)
 #endif
