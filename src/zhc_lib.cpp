@@ -3,11 +3,10 @@
     - dynamic folder (where we search for the files) + folder dialog
     - config file
     - responsive ui
-    - button icons
     - Some kind of overflow in stbtt_BakeFontBitmap for (108px size fonts)
-    - PNG loader
     - Render circles
     - Renderer fix upper clipping
+    - Local discovery
 */
 
 #include "zhc_lib.h"
@@ -127,7 +126,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         dgl_mem_arena_init(&state->permanent_arena, (uint8 *)memory->permanent_storage + sizeof(*state), ((DGL_Mem_Index)memory->permanent_storage_size - sizeof(*state)));
         dgl_mem_arena_init(&state->transient_arena, (uint8 *)memory->transient_storage, (DGL_Mem_Index)memory->transient_storage_size);
 
-        state->net_socket = net_init_socket(&state->permanent_arena, "0.0.0.0", 1337);
+        state->net_socket = net_init_socket(&state->permanent_arena, "0.0.0.0", ZHC_SERVER_PORT);
 
         state->ui_ctx = ui_context_init(&state->permanent_arena, &state->transient_arena);
 
@@ -184,8 +183,6 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         ui_main_text(ui_ctx, (char *)state->active_file.data, state->active_file.info->size);
     }
 
-    ui_menu(ui_ctx, rect(ui_ctx->window.w - default_theme.menu_size.x, 0, default_theme.menu_size.x, default_theme.menu_size.y));
-
     // TODO(dgl): use command buffer instead of desired file etc..
     int32 button_w = 100;
     int32 button_h = 400;
@@ -217,6 +214,8 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
             state->desired_file_id = dgl_clamp(state->desired_file_id - 1, 0, state->files->count - 1);
         }
     }
+
+    ui_menu(ui_ctx, rect(ui_ctx->window.w - default_theme.menu_size.x, 0, default_theme.menu_size.x, default_theme.menu_size.y));
 
     // NOTE(dgl): Reload the directory/file info and file every 10 seconds.
     state->io_update_timeout += input->last_frame_in_ms;
@@ -443,8 +442,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     else
     {
         // TODO(dgl): close socket if there is any error
-        //state->net_socket = net_init_socket(&state->permanent_arena, "192.168.101.124", 1337);
-        state->net_socket = net_init_socket(&state->permanent_arena, "127.0.0.1", 1337);
+        state->net_socket = net_init_socket(&state->permanent_arena, ZHC_SERVER_IP, ZHC_SERVER_PORT);
     }
 
     // NOTE(dgl): put this at the end of the frame

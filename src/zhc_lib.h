@@ -7,6 +7,13 @@
 #include "zhc_ui.h"
 
 #define ZHC_VERSION "0.1.0"
+#if ZHC_INTERNAL
+#define ZHC_SERVER_IP "127.0.0.1"
+#define ZHC_SERVER_PORT 1337
+#else
+#define ZHC_SERVER_IP "192.168.13.37"
+#define ZHC_SERVER_PORT 1337
+#endif
 
 // TODO(dgl): check file size on read file or filegroup
 #define ZHC_MAX_FILESIZE megabytes(1)

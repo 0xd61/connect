@@ -25,9 +25,9 @@ internal Theme
 default_theme_xs()
 {
     Theme result = {};
-    result.font_size = 16;
-    result.icon_size = 24;
-    result.menu_size = { .w=em(result, 15.0f), .h=em(result, 5.0f)};
+    result.font_size = 21;
+    result.icon_size = 64;
+    result.menu_size = { .w=em(result, 16.0f), .h=em(result, 6.0f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -38,9 +38,9 @@ internal Theme
 default_theme_sm()
 {
     Theme result = {};
-    result.font_size = 16;
-    result.icon_size = 24;
-    result.menu_size = { .w=em(result, 15.0f), .h=em(result, 5.0f)};
+    result.font_size = 21;
+    result.icon_size = 64;
+    result.menu_size = { .w=em(result, 16.0f), .h=em(result, 6.0f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -53,7 +53,7 @@ default_theme_md()
     Theme result = {};
     result.font_size = 18;
     result.icon_size = 32;
-    result.menu_size = { .w=em(result, 15.0f), .h=em(result, 5.0f)};
+    result.menu_size = { .w=em(result, 14.0f), .h=em(result, 5.0f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -571,7 +571,10 @@ ui_menu(Imui_Context *ctx, V4 body)
 internal void
 ui_main_text(Imui_Context *ctx, char *text, usize text_count)
 {
-    V4 body = rect(50, 50, ctx->window.w - 100, ctx->window.h - 100);
+    Theme default_theme = get_default_theme(ctx->screen);
+
+    V4 pad = {.top=default_theme.icon_size + 20, .bottom=dgl_round_real32_to_int32(ctx->text_font.height) + 100, .right=50, .left=50};
+    V4 body = rect(pad.left, pad.top, ctx->window.w - pad.right, ctx->window.h - pad.bottom);
 
     // NOTE(dgl): We use a hash of the data. Then every file has it's own state
     // and the scroll position is saved.
@@ -582,7 +585,6 @@ ui_main_text(Imui_Context *ctx, char *text, usize text_count)
 
     body.y -= c->scroll_pos;
 
-    Theme default_theme = get_default_theme(ctx->screen);
     V4 text_color = default_theme.primary_color;
     if(ctx->is_dark) { text_color = default_theme.bg_color; }
     c->content = ui_textarea(ctx, &ctx->text_font, body, text_color, text, dgl_safe_size_to_int32(text_count));
