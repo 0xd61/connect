@@ -16,3 +16,4 @@ local.properties
 /app/jni/SDLNet
 /app/jni/SDL/
 /app/jni/src/
+/app/release
