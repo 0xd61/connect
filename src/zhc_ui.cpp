@@ -514,7 +514,7 @@ ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text, int32 
 }
 
 internal bool32
-ui_button(Imui_Context *ctx, V4 body, Button_Theme theme, Icon_Type type)
+button(Imui_Context *ctx, V4 body, Button_Theme theme, Icon_Type type)
 {
     bool32 result = false;
 
@@ -530,86 +530,6 @@ ui_button(Imui_Context *ctx, V4 body, Button_Theme theme, Icon_Type type)
 
     end_element(ctx);
     return(result);
-}
-
-internal void
-ui_menu(Imui_Context *ctx, V4 body)
-{
-    V4 pad = {.top=20, .bottom=20, .right=20, .left=20};
-    V2 button = {};
-    button.w = (body.w - pad.left - 3*pad.right) / 3;
-    button.h = body.h - pad.top - pad.bottom;
-    int32 x = body.x + pad.left;
-    int32 y = body.y + pad.top;
-
-    Button_Theme button_theme = default_button_theme(ctx);
-
-    V4 r = rect(x, y, button.w, button.h);
-    Icon_Type mode_swap = Icon_Type_Dark;
-    if(ctx->is_dark) { mode_swap = Icon_Type_Light; }
-    if(ui_button(ctx, r, button_theme, mode_swap))
-    {
-        ctx->is_dark = !ctx->is_dark;
-    }
-    x += button.w + pad.right;
-
-    r = rect(x, y, button.w, button.h);
-    if(ui_button(ctx, r, button_theme, Icon_Type_Decrease_Font))
-    {
-        ctx->desired_text_font_size = dgl_clamp(ctx->desired_text_font_size - em(ctx, 0.5f), em(ctx, 0.5), MAX_FONT_SIZE);
-    }
-    x += button.w + pad.right;
-
-    r = rect(x, y, button.w, button.h);
-    if(ui_button(ctx, r, button_theme, Icon_Type_Increase_Font))
-    {
-         ctx->desired_text_font_size = dgl_clamp(ctx->desired_text_font_size + em(ctx, 0.5f), em(ctx, 0.5), MAX_FONT_SIZE);
-    }
-    x += button.w + pad.right;
-}
-
-internal void
-ui_main_text(Imui_Context *ctx, char *text, usize text_count)
-{
-    Theme default_theme = get_default_theme(ctx->screen);
-
-    V4 pad = {.top=default_theme.icon_size + 20, .bottom=dgl_round_real32_to_int32(ctx->text_font.height) + 100, .right=50, .left=50};
-    V4 body = rect(pad.left, pad.top, ctx->window.w - pad.right, ctx->window.h - pad.bottom);
-
-    // NOTE(dgl): We use a hash of the data. Then every file has it's own state
-    // and the scroll position is saved.
-    Element_ID id = get_id(ctx, text, text_count);
-    Element_State *c = get_element_state(ctx, id);
-
-    begin_element(ctx, id, body);
-
-    body.y -= c->scroll_pos;
-
-    V4 text_color = default_theme.primary_color;
-    if(ctx->is_dark) { text_color = default_theme.bg_color; }
-    c->content = ui_textarea(ctx, &ctx->text_font, body, text_color, text, dgl_safe_size_to_int32(text_count));
-
-    if(c->content.h > body.h)
-    {
-        int32 overflow = c->content.h - body.h;
-        int32 scroll_delta = 0;
-        if(ctx->input->scroll_delta.y != 0)
-        {
-            scroll_delta = -(ctx->input->scroll_delta.y * 30);
-        }
-        else if(ctx->active == id)
-        {
-            scroll_delta = ctx->input->last_pos.y - ctx->input->pos.y;
-        }
-
-        c->scroll_pos = dgl_clamp(c->scroll_pos + scroll_delta, 0, overflow);
-    }
-    else
-    {
-        c->scroll_pos = 0;
-    }
-
-    end_element(ctx);
 }
 
 // NOTE(dgl): try to resize only fonts which are the last allocation in the
@@ -714,6 +634,136 @@ initialize_icons(Zhc_Assets *assets, Zhc_File_Info *info, int32 size)
     return(result);
 }
 
+void
+ui_draw_menu(Imui_Context *ctx)
+{
+    Theme default_theme = get_default_theme(ctx->screen);
+    V4 body = rect(ctx->window.w - default_theme.menu_size.x, 0, default_theme.menu_size.x, default_theme.menu_size.y);
+    V4 pad = {.top=20, .bottom=20, .right=20, .left=20};
+    V2 button_body = {};
+    button_body.w = (body.w - pad.left - 3*pad.right) / 3;
+    button_body.h = body.h - pad.top - pad.bottom;
+    int32 x = body.x + pad.left;
+    int32 y = body.y + pad.top;
+
+    Button_Theme button_theme = default_button_theme(ctx);
+
+    V4 r = rect(x, y, button_body.w, button_body.h);
+    Icon_Type mode_swap = Icon_Type_Dark;
+    if(ctx->is_dark) { mode_swap = Icon_Type_Light; }
+    if(button(ctx, r, button_theme, mode_swap))
+    {
+        ctx->is_dark = !ctx->is_dark;
+    }
+    x += button_body.w + pad.right;
+
+    int32 new_font_size = 0;
+    r = rect(x, y, button_body.w, button_body.h);
+    if(button(ctx, r, button_theme, Icon_Type_Decrease_Font))
+    {
+        new_font_size = ctx->text_font.size - em(ctx, 0.3f);
+    }
+    x += button_body.w + pad.right;
+
+    r = rect(x, y, button_body.w, button_body.h);
+    if(button(ctx, r, button_theme, Icon_Type_Increase_Font))
+    {
+        new_font_size = ctx->text_font.size + em(ctx, 0.3f);
+    }
+    x += button_body.w + pad.right;
+
+    if(new_font_size > 0)
+    {
+        int32 clamped = dgl_clamp(new_font_size, em(ctx, 0.5f), MAX_FONT_SIZE);
+        LOG_DEBUG("Resizing font from %d to %d", ctx->text_font.size, clamped);
+        ui_resize_font(ctx->assets, &ctx->text_font, clamped);
+    }
+}
+
+void
+ui_draw_file_controls(Imui_Context *ctx, int32 *file_index)
+{
+    Button_Theme theme = default_button_theme(ctx);
+    theme.icon_size = 64;
+    int32 button_w = 100;
+    int32 button_h = 400;
+
+    if(button(ctx,
+              rect(ctx->window.w - button_w, (ctx->window.h - button_h)/2, button_w, button_h),
+              theme,
+              Icon_Type_Next) ||
+              input_pressed(ctx->input, Zhc_Keyboard_Button_Right) ||
+              input_pressed(ctx->input, Zhc_Keyboard_Button_Enter) ||
+              input_pressed(ctx->input, ' '))
+    {
+        (*file_index)++;
+    }
+
+    if(button(ctx,
+              rect(0, (ctx->window.h - button_h)/2, button_w, button_h),
+              theme,
+              Icon_Type_Previous) ||
+              input_pressed(ctx->input, Zhc_Keyboard_Button_Left))
+    {
+        (*file_index)--;
+    }
+}
+
+void
+ui_draw_textarea(Imui_Context *ctx, char *text, usize text_count)
+{
+    Theme default_theme = get_default_theme(ctx->screen);
+
+    V4 pad = {.top=default_theme.icon_size + 20, .bottom=dgl_round_real32_to_int32(ctx->text_font.height) + 100, .right=50, .left=50};
+    V4 body = rect(pad.left, pad.top, ctx->window.w - pad.right, ctx->window.h - pad.bottom);
+
+    // NOTE(dgl): We use a hash of the data. Then every file has it's own state
+    // and the scroll position is saved.
+    Element_ID id = get_id(ctx, text, text_count);
+    Element_State *c = get_element_state(ctx, id);
+
+    begin_element(ctx, id, body);
+
+    body.y -= c->scroll_pos;
+
+    V4 text_color = default_theme.primary_color;
+    if(ctx->is_dark) { text_color = default_theme.bg_color; }
+    c->content = ui_textarea(ctx, &ctx->text_font, body, text_color, text, dgl_safe_size_to_int32(text_count));
+
+    if(c->content.h > body.h)
+    {
+        int32 overflow = c->content.h - body.h;
+        int32 scroll_delta = 0;
+        if(ctx->input->scroll_delta.y != 0)
+        {
+            scroll_delta = -(ctx->input->scroll_delta.y * 30);
+        }
+        else if(ctx->active == id)
+        {
+            scroll_delta = ctx->input->last_pos.y - ctx->input->pos.y;
+        }
+
+        c->scroll_pos = dgl_clamp(c->scroll_pos + scroll_delta, 0, overflow);
+    }
+    else
+    {
+        c->scroll_pos = 0;
+    }
+
+    end_element(ctx);
+}
+
+void
+ui_draw_backplate(Imui_Context *ctx)
+{
+    V4 screen = rect(0, 0, ctx->window.w, ctx->window.h);
+
+    Theme default_theme = get_default_theme(ctx->screen);
+    V4 bg_color = default_theme.bg_color;
+    if(ctx->is_dark) { bg_color = default_theme.primary_color; }
+    ren_draw_rectangle(ctx->buffer, screen, bg_color);
+}
+
 Imui_Context *
 ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
 {
@@ -723,7 +773,6 @@ ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
     result->id_stack.memory = dgl_mem_arena_push_array(permanent_arena, Element_ID, result->id_stack.count);
     result->element_state_list.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
     result->element_state_list.memory = dgl_mem_arena_push_array(permanent_arena, Element_State, result->element_state_list.count);
-    result->desired_text_font_size = em(result, 1);
 
     result->assets = assets_begin_allocate(permanent_arena, megabytes(24));
     {
@@ -780,7 +829,8 @@ ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
     assets_end_allocate(result->assets);
     LOG_DEBUG("End allocating assets");
 
-    // NOTE(dgl): fontsize is set during context update
+    ui_resize_font(result->assets, &result->system_font, em(result, 1));
+    ui_resize_font(result->assets, &result->text_font, em(result, 1));
 
     return(result);
 }
@@ -802,11 +852,6 @@ ui_context_update(Imui_Context *ctx, Zhc_Input *input, Zhc_Offscreen_Buffer *buf
     {
         Theme default_theme = get_default_theme(ctx->screen);
         ui_resize_font(ctx->assets, &ctx->system_font, default_theme.font_size);
-
-        if(ctx->desired_text_font_size != ctx->text_font.size)
-        {
-            ui_resize_font(ctx->assets, &ctx->text_font, ctx->desired_text_font_size);
-        }
 
         // NOTE(dgl): unload all assets not needed for this theme. If sizes are still needed,
         // we reload them on demand @@performance

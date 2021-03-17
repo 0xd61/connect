@@ -79,8 +79,6 @@ struct Element_State
     int32 scroll_pos; /* only vertical scrolling */
 };
 
-#define Stack(Type) struct{usize count; usize offset; Type *memory;}
-
 struct Imui_Context
 {
     V2 window;
@@ -100,7 +98,6 @@ struct Imui_Context
 
     Font system_font;
     Font text_font;
-    int32 desired_text_font_size; /* in pixels */
 
     Zhc_Input *input;
     Zhc_Offscreen_Buffer *buffer;

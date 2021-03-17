@@ -25,6 +25,8 @@
 #define LOG_DEBUG(...) DGL_LOG_DEBUG(__VA_ARGS__)
 #endif
 
+#define Stack(Type) struct{usize count; usize offset; Type *memory;}
+
 struct V2
 {
     union
@@ -111,6 +113,7 @@ enum Zhc_Keyboard_Button
 
 struct Zhc_Input
 {
+    bool32 has_window_event;
     real32 last_frame_in_ms;
 
     V2 pos;
@@ -177,6 +180,7 @@ zhc_input_reset(Zhc_Input *input)
     input->scroll_delta = v2(0, 0);
     input->last_pos = input->pos;
     input->key_pressed = 0;
+    input->has_window_event = false;
 }
 
 struct Zhc_File_Handle
@@ -280,6 +284,6 @@ struct Zhc_Memory
 };
 
 // NOTE(dgl): zhc_lib.cpp
-void zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer *buffer);
-void zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer *buffer);
+bool32 zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer *buffer);
+bool32 zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer *buffer);
 #endif // ZHC_PLATFORM_H

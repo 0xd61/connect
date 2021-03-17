@@ -170,6 +170,10 @@ int main(int argc, char *argv[])
                         LOG_DEBUG("Mousemotion x %d, y %d", event.motion.x, event.motion.y);
                     } break;
 #endif
+                    case SDL_WINDOWEVENT:
+                    {
+                        input.has_window_event = true;
+                    } break;
                     default: {}
                 }
             }
@@ -185,8 +189,10 @@ int main(int argc, char *argv[])
 
             // TODO(dgl): only render if necessary
             // add render cache to only render rects that have changed
-            zhc_update_and_render_client(&memory, &input, &back_buffer);
-            SDL_UpdateWindowSurface(window);
+            if(zhc_update_and_render_client(&memory, &input, &back_buffer))
+            {
+                SDL_UpdateWindowSurface(window);
+            }
 
             uint64 work_counter = SDL_GetPerformanceCounter();
             uint64 work_ticks_elapsed = work_counter - last_counter;
@@ -211,7 +217,7 @@ int main(int argc, char *argv[])
             uint64 counter_elapsed = end_counter - last_counter;
             last_frame_in_ms = (((1000.0f * (real32)counter_elapsed) / (real32)perf_count_frequency));
 
-#if 1
+#if ZHC_DEBUG
             real32 fps = (real32)perf_count_frequency / (real32)counter_elapsed;
 
             LOG("%.02f ms/f, %.02ff/s", last_frame_in_ms, fps);

@@ -187,6 +187,10 @@ int main(int argc, char *argv[])
                                 (event.key.keysym.sym == SDLK_KP_ENTER))
                             zhc_input_keybutton(&input, Zhc_Keyboard_Button_Enter, down);
                     } break;
+                    case SDL_WINDOWEVENT:
+                    {
+                        input.has_window_event = true;
+                    } break;
                     default: {}
                 }
             }
@@ -202,8 +206,10 @@ int main(int argc, char *argv[])
 
             // TODO(dgl): only render if necessary
             // add render cache to only render rects that have changed
-            zhc_update_and_render_server(&memory, &input, &back_buffer);
-            SDL_UpdateWindowSurface(window);
+            if(zhc_update_and_render_server(&memory, &input, &back_buffer))
+            {
+                SDL_UpdateWindowSurface(window);
+            }
 
 
             uint64 work_counter = SDL_GetPerformanceCounter();

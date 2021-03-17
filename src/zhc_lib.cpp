@@ -66,6 +66,24 @@
 #pragma warning(pop)
 #endif
 
+internal bool32
+input_updated(Zhc_Input *a, Zhc_Input *b)
+{
+    bool32 result = false;
+    result = ((a->pos.x != b->pos.x) ||
+              (a->pos.y != b->pos.y) ||
+              (a->last_pos.x != b->last_pos.x) ||
+              (a->last_pos.y != b->last_pos.y) ||
+              (a->scroll_delta.x != b->scroll_delta.x) ||
+              (a->scroll_delta.y != b->scroll_delta.y) ||
+              (a->key_down != b->key_down) ||
+              (a->key_pressed != b->mouse_down) ||
+              (a->mouse_down != b->mouse_down) ||
+              strcmp(a->text, b->text) != 0);
+
+    return(result);
+}
+
 internal Zhc_File_Info *
 get_file_info(Zhc_File_Group *group, int32 index)
 {
@@ -113,7 +131,7 @@ read_active_file(DGL_Mem_Arena *arena, Zhc_File_Group *group, Zhc_File_Info *inf
     return(result);
 }
 
-void
+bool32
 zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer *buffer)
 {
     assert(sizeof(Lib_State) < memory->permanent_storage_size, "Not enough memory allocated");
@@ -165,57 +183,23 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         state->is_initialized = true;
     }
 
-    // NOTE(dgl): @@temporary only until we have a command buffer
-    Imui_Context *ui_ctx = state->ui_ctx;
-    ui_context_update(state->ui_ctx, input, buffer);
+    bool32 do_render = false;
 
-    // NOTE(dgl): draw backplate
-    V4 screen = rect(0, 0, ui_ctx->window.w, ui_ctx->window.h);
-
-    Theme default_theme = get_default_theme(ui_ctx->screen);
-    V4 bg_color = default_theme.bg_color;
-    if(ui_ctx->is_dark) { bg_color = default_theme.primary_color; }
-    ren_draw_rectangle(ui_ctx->buffer, screen, bg_color);
-
-    // NOTE(dgl): draw file, if it is available
-    if(state->active_file.data)
+    if(input->has_window_event)
     {
-        ui_main_text(ui_ctx, (char *)state->active_file.data, state->active_file.info->size);
+        do_render = true;
     }
-
-    // TODO(dgl): use command buffer instead of desired file etc..
-    int32 button_w = 100;
-    int32 button_h = 400;
-    Button_Theme next_prev_button_theme = default_button_theme(ui_ctx);
-    next_prev_button_theme.icon_size = 64;
-
-    if(ui_button(ui_ctx,
-                 rect(ui_ctx->window.w - button_w, (ui_ctx->window.h - button_h)/2, button_w, button_h),
-                 next_prev_button_theme,
-                 Icon_Type_Next) ||
-       input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Right) ||
-       input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Enter) ||
-       input_pressed(ui_ctx->input, ' '))
+    else if(input_updated(&state->old_input, input))
     {
-        if(state->files)
-        {
-            state->desired_file_id = dgl_clamp(state->desired_file_id + 1, 0, state->files->count - 1);
-        }
+        do_render = true;
+        state->old_input = *input;
+        state->force_render = true;
     }
-
-    if(ui_button(ui_ctx,
-                 rect(0, (ui_ctx->window.h - button_h)/2, button_w, button_h),
-                 next_prev_button_theme,
-                 Icon_Type_Previous) ||
-       input_pressed(ui_ctx->input, Zhc_Keyboard_Button_Left))
+    else
     {
-        if(state->files)
-        {
-            state->desired_file_id = dgl_clamp(state->desired_file_id - 1, 0, state->files->count - 1);
-        }
+        do_render = state->force_render;
+        state->force_render = false;
     }
-
-    ui_menu(ui_ctx, rect(ui_ctx->window.w - default_theme.menu_size.x, 0, default_theme.menu_size.x, default_theme.menu_size.y));
 
     // NOTE(dgl): Reload the directory/file info and file every 10 seconds.
     state->io_update_timeout += input->last_frame_in_ms;
@@ -244,15 +228,9 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
             if(info)
             {
                 state->active_file = read_active_file(&state->io_arena, state->files, info);
+                do_render = true;
             }
         }
-    }
-
-    // NOTE(dgl): update font size, if requested
-    if(ui_ctx->desired_text_font_size != ui_ctx->text_font.size)
-    {
-        LOG_DEBUG("Resizing font from %d to %d", ui_ctx->text_font.size, ui_ctx->desired_text_font_size);
-        ui_resize_font(ui_ctx->assets, &ui_ctx->text_font, ui_ctx->desired_text_font_size);
     }
 
     // NOTE(dgl): update active file if requested
@@ -260,6 +238,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     if(info && info != state->active_file.info)
     {
         state->active_file = read_active_file(&state->io_arena, state->files, info);
+        do_render = true;
     }
 
     // NOTE(dgl): Check if data is available on the socket.
@@ -308,14 +287,39 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         }
     }
 
-    // NOTE(dgl): put this at the end of the frame
-    // to know which element is hot if they are overlapping
-    // on the next frame
-    ui_ctx->top_most_hot = ui_ctx->hot;
+    if(do_render)
+    {
+        // NOTE(dgl): @@temporary only until we have a command buffer
+        Imui_Context *ui_ctx = state->ui_ctx;
+        ui_context_update(ui_ctx, input, buffer);
+
+        ui_draw_backplate(ui_ctx);
+
+        if(state->active_file.data)
+        {
+            ui_draw_textarea(ui_ctx, (char *)state->active_file.data, state->active_file.info->size);
+        }
+
+        int32 next_file_id = state->desired_file_id;
+        ui_draw_file_controls(ui_ctx, &next_file_id);
+        if(state->files)
+        {
+            state->desired_file_id = dgl_clamp(next_file_id, 0, state->files->count - 1);
+        }
+
+        ui_draw_menu(ui_ctx);
+
+        // NOTE(dgl): put this at the end of the frame
+        // to know which element is hot if they are overlapping
+        // on the next frame
+        ui_ctx->top_most_hot = ui_ctx->hot;
+    }
+
     dgl_mem_arena_free_all(&state->transient_arena);
+    return(do_render);
 }
 
-void
+bool32
 zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen_Buffer *buffer)
 {
     assert(sizeof(Lib_State) < memory->permanent_storage_size, "Not enough memory allocated");
@@ -345,30 +349,22 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         state->is_initialized = true;
     }
 
-    Imui_Context *ui_ctx = state->ui_ctx;
-    ui_context_update(state->ui_ctx, input, buffer);
+    bool32 do_render = false;
 
-    // NOTE(dgl): draw backplate
-    V4 screen = rect(0, 0, ui_ctx->window.w, ui_ctx->window.h);
-
-    Theme default_theme = get_default_theme(ui_ctx->screen);
-    V4 bg_color = default_theme.bg_color;
-    if(ui_ctx->is_dark) { bg_color = default_theme.primary_color; }
-    ren_draw_rectangle(ui_ctx->buffer, screen, bg_color);
-
-    // NOTE(dgl): draw file, if it is available
-    if(state->active_file.data)
+    if(input->has_window_event)
     {
-        ui_main_text(ui_ctx, (char *)state->active_file.data, state->active_file.info->size);
+        do_render = true;
     }
-
-    ui_menu(ui_ctx, rect(ui_ctx->window.w - default_theme.menu_size.x, 0, default_theme.menu_size.x, default_theme.menu_size.y));
-
-    // NOTE(dgl): update font size, if requested
-    if(ui_ctx->desired_text_font_size != ui_ctx->text_font.size)
+    else if(input_updated(&state->old_input, input))
     {
-        LOG_DEBUG("Resizing font from %d to %d", ui_ctx->text_font.size, ui_ctx->desired_text_font_size);
-        ui_resize_font(ui_ctx->assets, &ui_ctx->text_font, ui_ctx->desired_text_font_size);
+        do_render = true;
+        state->old_input = *input;
+        state->force_render = true;
+    }
+    else
+    {
+        do_render = state->force_render;
+        state->force_render = false;
     }
 
     // TODO(dgl): blocks until timeout is hit or connection is
@@ -430,6 +426,8 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
                         state->active_file.data = data;
                         state->active_file.hash = HASH_OFFSET_BASIS;
                         hash(&state->active_file.hash, state->active_file.data, state->active_file.info->size);
+
+                        do_render = true;
                     }
                 } break;
                 default:
@@ -445,9 +443,28 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         state->net_socket = net_init_socket(&state->permanent_arena, ZHC_SERVER_IP, ZHC_SERVER_PORT);
     }
 
-    // NOTE(dgl): put this at the end of the frame
-    // to know which element is hot if they are overlapping
-    // on the next frame
-    ui_ctx->top_most_hot = ui_ctx->hot;
+    if(do_render)
+    {
+        Imui_Context *ui_ctx = state->ui_ctx;
+        ui_context_update(ui_ctx, input, buffer);
+
+        ui_draw_backplate(ui_ctx);
+
+        // NOTE(dgl): draw file, if it is available
+        if(state->active_file.data)
+        {
+            ui_draw_textarea(ui_ctx, (char *)state->active_file.data, state->active_file.info->size);
+        }
+
+        ui_draw_menu(ui_ctx);
+
+        // NOTE(dgl): put this at the end of the frame
+        // to know which element is hot if they are overlapping
+        // on the next frame
+        ui_ctx->top_most_hot = ui_ctx->hot;
+    }
+
     dgl_mem_arena_free_all(&state->transient_arena);
+
+    return(do_render);
 }

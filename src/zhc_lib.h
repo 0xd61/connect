@@ -43,6 +43,9 @@ struct Lib_State
 
     Zhc_Net_Socket net_socket;
 
+    Zhc_Input old_input;
+    bool32 force_render;
+
     bool32 is_initialized;
 };
 
