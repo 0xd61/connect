@@ -12,7 +12,7 @@ enum Screen_Size
 {
     Screen_Uninitialized = 0,
     Screen_Size_XS = 640,
-    Screen_Size_SM = 768,
+    Screen_Size_SM = 720,
     Screen_Size_MD = 1024,
     Screen_Size_LG = 1280,
     Screen_Size_XL = 1536
@@ -94,7 +94,7 @@ struct Imui_Context
 
     Zhc_Assets *assets;
 
-    Icon_Set icon_sets[5]; /* 16, 25, 32, 64, 128 */
+    Icon_Set icon_sets[6]; /* 24, 32, 48, 64, 96, 128 */
 
     Font system_font;
     Font text_font;

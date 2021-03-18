@@ -235,10 +235,13 @@ int main(int argc, char *argv[])
             uint64 counter_elapsed = end_counter - last_counter;
             last_frame_in_ms = (((1000.0f * (real32)counter_elapsed) / (real32)perf_count_frequency));
 
-#if 0
+#if ZHC_DEBUG
             real32 fps = (real32)perf_count_frequency / (real32)counter_elapsed;
 
-            LOG("%.02f ms/f, %.02ff/s", last_frame_in_ms, fps);
+            if(fps < cast(real32)target_fps)
+            {
+                LOG("FPS DROP %.02f ms/f, %.02ff/s", last_frame_in_ms, fps);
+            }
 #endif
             last_counter = end_counter;
         }

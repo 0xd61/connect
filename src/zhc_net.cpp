@@ -195,6 +195,7 @@ internal Zhc_Net_Socket
 net_init_socket(DGL_Mem_Arena *arena, char *ip, uint16 port)
 {
     Zhc_Net_Socket result = {};
+    LOG_DEBUG("Listening for connection: %s:%d", ip, port);
 
     int32 index = 0;
     int32 number = 0;
@@ -249,7 +250,7 @@ net_recv_header(Zhc_Net_Socket *socket, Zhc_Net_IP *source, Net_Msg_Header *head
     bool32 result = false;
 
     Net_Msg_Header tmp_header = {};
-    uint8 memory[sizeof(header)] = {};
+    uint8 memory[sizeof(*header)] = {};
     Bitstream reader = stream_reader_init(memory, array_count(memory));
 
     // NOTE(dgl): we try to serialize the header without any data to get the size of the data @@performance

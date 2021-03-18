@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
     SDL_DisableScreenSaver();
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
-    uint64 target_fps = 60;
+    uint64 target_fps = 30;
     uint64 target_frame_ticks = (SDL_GetPerformanceFrequency() / target_fps);
     real32 target_ms_per_frame = (1.0f / cast(real32)target_fps) * 1000.0f;
 
@@ -220,7 +220,10 @@ int main(int argc, char *argv[])
 #if ZHC_DEBUG
             real32 fps = (real32)perf_count_frequency / (real32)counter_elapsed;
 
-            LOG("%.02f ms/f, %.02ff/s", last_frame_in_ms, fps);
+            if(fps < cast(real32)target_fps)
+            {
+                LOG("FPS DROP: %.02f ms/f, %.02ff/s", last_frame_in_ms, fps);
+            }
 #endif
             last_counter = end_counter;
         }

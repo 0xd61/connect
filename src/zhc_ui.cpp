@@ -25,9 +25,9 @@ internal Theme
 default_theme_xs()
 {
     Theme result = {};
-    result.font_size = 21;
-    result.icon_size = 64;
-    result.menu_size = { .w=em(result, 16.0f), .h=em(result, 6.0f)};
+    result.font_size = 26;
+    result.icon_size = 48;
+    result.menu_size = { .w=em(result, 10.0f), .h=em(result, 4.0f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -38,9 +38,9 @@ internal Theme
 default_theme_sm()
 {
     Theme result = {};
-    result.font_size = 21;
+    result.font_size = 32;
     result.icon_size = 64;
-    result.menu_size = { .w=em(result, 16.0f), .h=em(result, 6.0f)};
+    result.menu_size = { .w=em(result, 10.0f), .h=em(result, 3.5f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -51,9 +51,9 @@ internal Theme
 default_theme_md()
 {
     Theme result = {};
-    result.font_size = 18;
-    result.icon_size = 32;
-    result.menu_size = { .w=em(result, 14.0f), .h=em(result, 5.0f)};
+    result.font_size = 46;
+    result.icon_size = 64;
+    result.menu_size = { .w=em(result, 10.0f), .h=em(result, 4.0f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -64,9 +64,9 @@ internal Theme
 default_theme_lg()
 {
     Theme result = {};
-    result.font_size = 21;
-    result.icon_size = 32;
-    result.menu_size = { .w=em(result, 15.0f), .h=em(result, 5.0f)};
+    result.font_size = 52;
+    result.icon_size = 96;
+    result.menu_size = { .w=em(result, 11.0f), .h=em(result, 4.0f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -77,9 +77,9 @@ internal Theme
 default_theme_xl()
 {
     Theme result = {};
-    result.font_size = 24;
-    result.icon_size = 32;
-    result.menu_size = { .w=em(result, 15.0f), .h=em(result, 5.0f)};
+    result.font_size = 60;
+    result.icon_size = 96;
+    result.menu_size = { .w=em(result, 10.0f), .h=em(result, 5.0f)};
     result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
     result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -548,7 +548,7 @@ ui_resize_font(Zhc_Assets *assets, Font *font, int32 font_size)
     real32 scale = stbtt_ScaleForPixelHeight(&font_asset->stbfont, cast(real32)font->size);
     // NOTE(dgl): linegap is defined by the font. However it was 0 in the fonts I
     // have tested.
-    font->linegap = 1.2f; //cast(real32)linegap;
+    font->linegap = 1.4f; //cast(real32)linegap;
     font->height = cast(real32)(ascent - descent) * scale;
 
     // NOTE(dgl): loading the font_bitmap, if it exists. Otherwise this pointer is NULL!
@@ -801,11 +801,7 @@ ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
             {
                 LOG_DEBUG("Filename %s", icon_set->filename);
                 // TODO(dgl): @@performance But only executed once during init.
-                if(strcmp(icon_set->filename, "16x16.png") == 0)
-                {
-                    result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 16);
-                }
-                else if(strcmp(icon_set->filename, "24x24.png") == 0)
+                if(strcmp(icon_set->filename, "24x24.png") == 0)
                 {
                     result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 24);
                 }
@@ -813,9 +809,17 @@ ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
                 {
                     result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 32);
                 }
+                else if(strcmp(icon_set->filename, "48x48.png") == 0)
+                {
+                    result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 48);
+                }
                 else if(strcmp(icon_set->filename, "64x64.png") == 0)
                 {
                     result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 64);
+                }
+                else if(strcmp(icon_set->filename, "96x96.png") == 0)
+                {
+                    result->icon_sets[index++] = initialize_icons(result->assets, icon_set, 96);
                 }
                 else if(strcmp(icon_set->filename, "128x128.png") == 0)
                 {
@@ -828,9 +832,6 @@ ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
     }
     assets_end_allocate(result->assets);
     LOG_DEBUG("End allocating assets");
-
-    ui_resize_font(result->assets, &result->system_font, em(result, 1));
-    ui_resize_font(result->assets, &result->text_font, em(result, 1));
 
     return(result);
 }
@@ -851,7 +852,14 @@ ui_context_update(Imui_Context *ctx, Zhc_Input *input, Zhc_Offscreen_Buffer *buf
     if(maybe_update_screen_size(ctx))
     {
         Theme default_theme = get_default_theme(ctx->screen);
-        ui_resize_font(ctx->assets, &ctx->system_font, default_theme.font_size);
+        ui_resize_font(ctx->assets, &ctx->system_font, em(default_theme, 1));
+
+        // NOTE(dgl): only resize the text font if it is not initialized.
+        // TODO(dgl): initialize this font size from config
+        if(ctx->text_font.size == 0)
+        {
+            ui_resize_font(ctx->assets, &ctx->text_font, em(default_theme, 1));
+        }
 
         // NOTE(dgl): unload all assets not needed for this theme. If sizes are still needed,
         // we reload them on demand @@performance

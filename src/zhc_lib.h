@@ -8,7 +8,7 @@
 
 #define ZHC_VERSION "0.1.0"
 #if ZHC_INTERNAL
-#define ZHC_SERVER_IP "127.0.0.1"
+#define ZHC_SERVER_IP "192.168.101.124"
 #define ZHC_SERVER_PORT 1337
 #else
 #define ZHC_SERVER_IP "192.168.13.37"
