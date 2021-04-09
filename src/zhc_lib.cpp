@@ -2,20 +2,22 @@
     NOTE(dgl): TODOs
     - dynamic folder (where we search for the files) + folder dialog
     - config file
-    - responsive ui
     - Some kind of overflow in stbtt_BakeFontBitmap for (108px size fonts)
     - Render circles
     - Renderer fix upper clipping
-    - Local discovery
+    - Local discovery (use UDP)
+    - Crash on android landscape
+    - render one time before trying to connect to the socket (use UDP)
 */
 
 #include "zhc_lib.h"
-#include "zhc_net.cpp"
 #include "zhc_asset.cpp"
 #include "zhc_renderer.cpp"
 // TODO(dgl): should we move the rendering calls out of UI and
 // use a render command buffer?
 #include "zhc_ui.cpp"
+#include "zhc_crypto.cpp"
+#include "zhc_net.cpp"
 
 #define STB_TRUETYPE_IMPLEMENTATION  // force following include to generate implementation
 #define STB_IMAGE_IMPLEMENTATION
@@ -144,8 +146,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         dgl_mem_arena_init(&state->permanent_arena, (uint8 *)memory->permanent_storage + sizeof(*state), ((DGL_Mem_Index)memory->permanent_storage_size - sizeof(*state)));
         dgl_mem_arena_init(&state->transient_arena, (uint8 *)memory->transient_storage, (DGL_Mem_Index)memory->transient_storage_size);
 
-        state->net_socket = net_init_socket(&state->permanent_arena, "0.0.0.0", ZHC_SERVER_PORT);
-
+        state->net_ctx = net_init_server(&state->permanent_arena);
         state->ui_ctx = ui_context_init(&state->permanent_arena, &state->transient_arena);
 
         // NOTE(dgl): Initialize IO Context
@@ -241,51 +242,27 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         do_render = true;
     }
 
-    // NOTE(dgl): Check if data is available on the socket.
-    bool32 data_available = true;
-    while(data_available)
+    Net_Msg_Header header = {};
+    Net_Conn_ID client = 0;
+    while((client = net_recv_header(&state->transient_arena, state->net_ctx, &header)) >= 0)
     {
-        Zhc_Net_IP address = {};
-        Net_Msg_Header header = {};
-
-        data_available = net_recv_header(&state->net_socket, &address, &header);
-
-        if(header.type > 0)
+        switch(header.type)
         {
-            assert(address.host > 0 && address.port > 0, "Platform layer must fill the address struct");
-
-            // TODO(dgl): proper message sending @@cleanup
-            switch(header.type)
+            case Net_Msg_Header_Hash_Req:
             {
-                case Net_Msg_Header_Hash_Req:
-                {
-                    if(state->active_file.hash)
-                    {
-                        net_send_hash_response(&state->net_socket, &address, state->active_file.hash);
-                    }
-                    else
-                    {
-                        net_send_header(&state->net_socket, &address, Net_Msg_Header_Hash_Res);
-                    }
-                } break;
-                case Net_Msg_Header_Data_Req:
-                {
-                    if(state->active_file.data)
-                    {
-                        net_send_data_response(&state->net_socket, &address, state->active_file.data, state->active_file.info->size);
-                    }
-                    else
-                    {
-                        net_send_header(&state->net_socket, &address, Net_Msg_Header_Data_Res);
-                    }
-                } break;
-                default:
-                {
-                    LOG_DEBUG("Unhandled network message with type %d (version %u)", header.type, header.version);
-                }
+                net_send_hash(state->net_ctx, client, state->active_file.hash);
+            } break;
+            case Net_Msg_Header_Data_Req:
+            {
+                net_send_data(state->net_ctx, client, state->active_file.data, state->active_file.info->size);
+            } break;
+            default:
+            {
+                // TODO(dgl): do nothing
             }
         }
     }
+    net_send_pending_packet_buffers(state->net_ctx);
 
     if(do_render)
     {
@@ -332,6 +309,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         dgl_mem_arena_init(&state->transient_arena, (uint8 *)memory->transient_storage, (DGL_Mem_Index)memory->transient_storage_size);
         LOG_DEBUG("Permanent memory: %p (%lld), Lib_State size: %lld, permanent_arena: %p, transient_arena: %p", memory->permanent_storage, memory->permanent_storage_size, sizeof(*state), state->permanent_arena.base, state->transient_arena.base);
 
+        state->net_ctx = net_init_client(&state->permanent_arena);
         state->ui_ctx = ui_context_init(&state->permanent_arena, &state->transient_arena);
 
         // NOTE(dgl): Initialize IO Context
@@ -367,80 +345,58 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         state->force_render = false;
     }
 
-    // TODO(dgl): blocks until timeout is hit or connection is
-    // established. Need to draw something and then try to connect.
-    // If this is too much of a hassle, we will use a background thread.
-    if(state->net_socket.no_error)
+    Net_Msg_Header header = {};
+    Net_Conn_ID client = 0;
+    net_request_server_connection(state->net_ctx);
+    while((client = net_recv_header(&state->transient_arena, state->net_ctx, &header)) >= 0)
     {
-        state->io_update_timeout += input->last_frame_in_ms;
-        if(state->io_update_timeout > 1000.0f)
+        switch(header.type)
         {
-            state->io_update_timeout = 0;
-            net_send_hash_request(&state->net_socket, &state->net_socket.address);
-        }
-
-
-        // NOTE(dgl): On the client side we don't care about the address. There is currently only
-        // one server. This is just to fullfil the api specification. Maybe we will need it later,
-        // or we will fill it in the platform layer to have a more complete implementation. But for
-        // now this is not implemented on the client platform layer.
-        Net_Msg_Header header = {};
-        Zhc_Net_IP _address = {};
-
-        net_recv_header(&state->net_socket, &_address, &header);
-        if(header.type > 0)
-        {
-            // TODO(dgl): handle requests with the command buffer
-            switch(header.type)
+            case Net_Msg_Header_Hash_Res:
             {
-                case Net_Msg_Header_Hash_Res:
+                uint32 hash = 0;
+                net_extract_hash(&header, &hash);
+                if(hash != state->active_file.hash)
                 {
-                    if(header.size > 0)
-                    {
-                        uint32 hash = 0;
-                        net_recv_hash(&state->net_socket, &_address, &hash);
-
-                        if(hash != state->active_file.hash)
-                        {
-                            LOG_DEBUG("Hash mismatch - remote: %u, local: %u", hash, state->active_file.hash);
-                            net_send_data_request(&state->net_socket, &state->net_socket.address);
-                        }
-                    }
-                } break;
-                case Net_Msg_Header_Data_Res:
-                {
-                    if(header.size > 0)
-                    {
-                        // NOTE(dgl): cleanup IO arena
-                        state->active_file = {};
-                        dgl_mem_arena_free_all(&state->io_arena);
-
-                        // NOTE(dgl): push new data into the arena
-                        Zhc_File_Info *info = dgl_mem_arena_push_struct(&state->io_arena, Zhc_File_Info);
-                        info->filename = "\0";
-                        info->size = header.size;
-                        uint8 *data = dgl_mem_arena_push_array(&state->io_arena, uint8, info->size);
-                        net_recv_data(&state->net_socket, &_address, data, info->size);
-
-                        state->active_file.info = info;
-                        state->active_file.data = data;
-                        state->active_file.hash = HASH_OFFSET_BASIS;
-                        hash(&state->active_file.hash, state->active_file.data, state->active_file.info->size);
-
-                        do_render = true;
-                    }
-                } break;
-                default:
-                {
-                    LOG_DEBUG("Unhandled network message with type %d (version %u)", header.type, header.version);
+                    net_send_message(state->net_ctx, 0, Net_Msg_Header_Data_Req);
                 }
+            } break;
+            case Net_Msg_Header_Data_Res:
+            {
+                 state->active_file = {};
+                 dgl_mem_arena_free_all(&state->io_arena);
+
+                 // NOTE(dgl): push new data into the arena
+                 Zhc_File_Info *info = dgl_mem_arena_push_struct(&state->io_arena, Zhc_File_Info);
+                 info->filename = "\0";
+                 info->size = header.size;
+                 uint8 *data = dgl_mem_arena_push_array(&state->io_arena, uint8, info->size);
+                 net_extract_data(&header, data, info->size);
+
+                 state->active_file.info = info;
+                 state->active_file.data = data;
+                 state->active_file.hash = HASH_OFFSET_BASIS;
+                 hash(&state->active_file.hash, state->active_file.data, state->active_file.info->size);
+
+                 do_render = true;
+            } break;
+            default:
+            {
+                // NOTE(dgl): do nothing
             }
         }
     }
-    else
+    net_send_pending_packet_buffers(state->net_ctx);
+
+    // TODO(dgl): @cleanup We do need a proper way to send something to the server
+    // I also do not like the way we send connection messages in the net_recv_header function.
+    state->io_update_timeout += input->last_frame_in_ms;
+    if(state->io_update_timeout > 1000.0f)
     {
-        // TODO(dgl): close socket if there is any error
-        state->net_socket = net_init_socket(&state->permanent_arena, ZHC_SERVER_IP, ZHC_SERVER_PORT);
+        state->io_update_timeout = 0;
+        // NOTE(dgl): Currently there is only one server on index 0. If we have more
+        // we maybe should create something like net_send_header to all connections.
+        net_send_message(state->net_ctx, 0, Net_Msg_Header_Hash_Req);
     }
 
     if(do_render)

@@ -93,7 +93,7 @@ main(int argc, char **argv)
 
         IPaddress client_address = *SDLNet_TCP_GetPeerAddress(server_platform->clients[0].socket);
         SDLNet_TCP_Close(client_platform->socket);
-        Zhc_Net_IP address = {};
+        Zhc_Net_Address address = {};
         sdl_net_server_receive_data(&server, &address, 0, 0);
 
         DGL_EXPECT_uint32(address.host, ==, client_address.host);
@@ -124,11 +124,11 @@ main(int argc, char **argv)
 
         char *send_buf1 = "abc";
         char *send_buf2 = "def";
-        Zhc_Net_IP server_address = { .host=TEST_HOST, .port=TEST_PORT };
+        Zhc_Net_Address server_address = { .host=TEST_HOST, .port=TEST_PORT };
         sdl_net_client_send_data(&client2, &server_address, dgl_cast(uint8 *)send_buf2, 4);
         sdl_net_client_send_data(&client1, &server_address, dgl_cast(uint8 *)send_buf1, 4);
 
-        Zhc_Net_IP client_address = {};
+        Zhc_Net_Address client_address = {};
         char recv_buf[4] = {};
         DGL_EXPECT_bool32(sdl_net_server_receive_data(&server, &client_address, recv_buf, 4), ==, true);
         DGL_EXPECT_int32(strcmp(recv_buf, send_buf1), ==, 0);
@@ -165,11 +165,11 @@ main(int argc, char **argv)
 
         char *send_buf1 = "abc";
         char *send_buf2 = "def";
-        Zhc_Net_IP server_address = { .host=TEST_HOST, .port=TEST_PORT };
+        Zhc_Net_Address server_address = { .host=TEST_HOST, .port=TEST_PORT };
         sdl_net_client_send_data(&client2, &server_address, dgl_cast(uint8 *)send_buf2, 4);
         sdl_net_client_send_data(&client1, &server_address, dgl_cast(uint8 *)send_buf1, 4);
 
-        Zhc_Net_IP client_address = { .host=server_platform->clients[1].peer.host,
+        Zhc_Net_Address client_address = { .host=server_platform->clients[1].peer.host,
                                       .port=SDL_Swap16(server_platform->clients[1].peer.port)};
         char recv_buf[4] = {};
         DGL_EXPECT_bool32(sdl_net_server_receive_data(&server, &client_address, recv_buf, 4), ==, true);
@@ -202,12 +202,12 @@ main(int argc, char **argv)
         SDL_Server_Socket *server_platform = dgl_cast(SDL_Server_Socket *)server.platform;
         SDL_Client_Socket *client_platform = dgl_cast(SDL_Client_Socket *)client.platform;
         int8 msg = 123;
-        Zhc_Net_IP client_address = { .host=server_platform->clients[0].peer.host,
+        Zhc_Net_Address client_address = { .host=server_platform->clients[0].peer.host,
                                       .port=SDL_Swap16(server_platform->clients[0].peer.port)};
 
         sdl_net_server_send_data(&server, &client_address, &msg, 1);
 
-        Zhc_Net_IP address = {};
+        Zhc_Net_Address address = {};
         int8 resv_msg = 0;
         sdl_net_client_receive_data(&client, &address, &resv_msg, 1);
 
