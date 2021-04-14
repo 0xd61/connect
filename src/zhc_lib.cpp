@@ -7,7 +7,6 @@
     - Renderer fix upper clipping
     - Local discovery (use UDP)
     - Crash on android landscape
-    - render one time before trying to connect to the socket (use UDP)
     - if filesize too large, we get a segfault (probably an isseue with sending an not loaded file!?)
     - Better packet buffer strategy to be able to resend if necessary
     - Packet throttle for large chunks to not flood the bandwidth
@@ -184,6 +183,8 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         // sometimes the return action was triggert from executing
         // the application
         zhc_input_reset(input);
+
+        state->force_render = true;
         state->is_initialized = true;
     }
 
@@ -335,6 +336,8 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         // sometimes the return action was triggert from executing
         // the application
         zhc_input_reset(input);
+
+        state->force_render = true;
         state->is_initialized = true;
     }
 
