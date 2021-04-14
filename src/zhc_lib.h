@@ -1,11 +1,10 @@
-#ifndef ZHC_LIB_H
-#define ZHC_LIB_H
+#ifndef ZHC_LIB
+#define ZHC_LIB
 
 #include "zhc_platform.h"
 #include "zhc_utils.h"
 #include "zhc_asset.h"
 #include "zhc_ui.h"
-#include "zhc_net.h"
 
 #define ZHC_VERSION "0.1.0"
 #if ZHC_INTERNAL
@@ -16,11 +15,7 @@
 #define ZHC_SERVER_PORT 1337
 #endif
 
-// NOTE(dgl): This size is cannot be larger than the amount of bits
-// that are available in an ACK package (MTU size - ACK header size)
-// the current max is about 1.2 megabytes. Therefore we max the size at
-// 1 megabyte. If larger files need to be sent, we need another ACK
-// strategy. Currently each bit determines a chunk slice.
+// TODO(dgl): check file size on read file or filegroup
 #define ZHC_MAX_FILESIZE megabytes(1)
 
 global Zhc_Platform_Api platform;
@@ -46,7 +41,7 @@ struct Lib_State
     Zhc_File_Group *files;
     int32 desired_file_id;
 
-    Net_Context *net_ctx;
+    Zhc_Net_Socket net_socket;
 
     Zhc_Input old_input;
     bool32 force_render;
@@ -54,4 +49,4 @@ struct Lib_State
     bool32 is_initialized;
 };
 
-#endif // ZHC_LIB_H
+#endif // ZHC_LIB

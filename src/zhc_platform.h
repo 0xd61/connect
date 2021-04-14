@@ -213,7 +213,7 @@ struct Zhc_File_Group
     char *dirpath;
 };
 
-struct Zhc_Net_Address
+struct Zhc_Net_IP
 {
     union
     {
@@ -232,9 +232,7 @@ struct Zhc_Net_Address
 
 struct Zhc_Net_Socket
 {
-    Zhc_Net_Address address;
-    Zhc_File_Handle handle;
-    // NOTE(dgl): @deprecated please do not use this.
+    Zhc_Net_IP address;
     void *platform;
     bool32 no_error;
 };
@@ -255,14 +253,12 @@ typedef ZHC_GET_USER_DATA_BASE_PATH(Zhc_Get_User_Data_Base_Path);
 typedef ZHC_GET_DATA_BASE_PATH(Zhc_Get_Data_Base_Path);
 #define ZHC_OPEN_SOCKET(name) void name(DGL_Mem_Arena *arena, Zhc_Net_Socket *socket)
 typedef ZHC_OPEN_SOCKET(Zhc_Open_Socket);
-#define ZHC_CLOSE_SOCKET(name) void name(Zhc_Net_Socket *socket)
-typedef ZHC_CLOSE_SOCKET(Zhc_Close_Socket);
 
 // TODO(dgl): return peer_address instead of bool32. If there was no data available we could
 // return a 0 address (host and port 0).
-#define ZHC_RECEIVE_DATA(name) int32 name(Zhc_Net_Socket *socket, Zhc_Net_Address *peer_address, uint8 *buffer, usize buffer_size)
+#define ZHC_RECEIVE_DATA(name) bool32 name(Zhc_Net_Socket *socket, Zhc_Net_IP *peer_address, void *buffer, usize buffer_size)
 typedef ZHC_RECEIVE_DATA(Zhc_Receive_Data);
-#define ZHC_SEND_DATA(name) void name(Zhc_Net_Socket *socket, Zhc_Net_Address *target_address, uint8 *buffer, usize buffer_size)
+#define ZHC_SEND_DATA(name) void name(Zhc_Net_Socket *socket, Zhc_Net_IP *target_address, void *buffer, usize buffer_size)
 typedef ZHC_SEND_DATA(Zhc_Send_Data);
 
 struct Zhc_Platform_Api
@@ -273,7 +269,6 @@ struct Zhc_Platform_Api
     Zhc_Get_User_Data_Base_Path *get_user_data_base_path;
     Zhc_Get_Data_Base_Path *get_data_base_path;
     Zhc_Open_Socket *open_socket;
-    Zhc_Close_Socket *close_socket;
     Zhc_Receive_Data *receive_data;
     Zhc_Send_Data *send_data;
 };

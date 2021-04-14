@@ -1,5 +1,5 @@
-#ifndef ZHC_UI_H
-#define ZHC_UI_H
+#ifndef ZHC_UI
+#define ZHC_UI
 
 #include "lib/stb_truetype.h"
 
@@ -108,4 +108,4 @@ struct Imui_Context
 
 internal Theme get_default_theme(Screen_Size screen);
 
-#endif // ZHC_UI_H
+#endif // ZHC_UI

@@ -96,10 +96,9 @@ int main(int argc, char *argv[])
         memory.api.file_size = sdl_file_size;
         memory.api.get_data_base_path = sdl_internal_storage_path;
         memory.api.get_user_data_base_path = sdl_external_storage_path;
-        memory.api.open_socket = sdl_net_open_socket;
-        memory.api.close_socket = sdl_net_close_socket;
-        memory.api.send_data = sdl_net_send_data;
-        memory.api.receive_data = sdl_net_receive_data;
+        memory.api.open_socket = sdl_net_client_setup_socket;
+        memory.api.send_data = sdl_net_client_send_data;
+        memory.api.receive_data = sdl_net_client_receive_data;
 
         Zhc_Offscreen_Buffer back_buffer = {};
         Zhc_Input input = {};
@@ -168,6 +167,7 @@ int main(int argc, char *argv[])
                     case SDL_MOUSEMOTION:
                     {
                         zhc_input_mousemove(&input, v2(event.motion.x, event.motion.y));
+                        LOG_DEBUG("Mousemotion x %d, y %d", event.motion.x, event.motion.y);
                     } break;
 #endif
                     case SDL_WINDOWEVENT:

@@ -1,5 +1,4 @@
 #include "zhc_lib.h"
-#include "zhc_crypto.cpp"
 #include "zhc_net.cpp"
 
 #define DGL_IMPLEMENTATION
@@ -88,39 +87,7 @@ main(int argc, char **argv)
         DGL_EXPECT(count, ==, 8, usize, "%zu");
         DGL_EXPECT_uint32(header2.type, ==, Net_Msg_Header_Hash_Req);
         DGL_EXPECT_uint32(header2.version, ==, parse_version("1.2.3"));
-        DGL_EXPECT(header2.size, ==, 1337, usize, "%zu");
-    }
-    DGL_END_TEST();
-
-    DGL_BEGIN_TEST("serializes packet");
-    {
-        Packet packet1 = {};
-        packet1.id = 0x9988;
-        packet1.type = Packet_Type_Request;
-        packet1.salt = 0xFFFF00000000FFFF;
-        packet1.index = 23;
-
-        uint8 memory[sizeof(packet1)] = {};
-        Bitstream writer = stream_writer_init(memory, array_count(memory));
-
-        usize count = serialize_packet(&writer, &packet1);
-
-        DGL_EXPECT(count, ==, 16, usize, "%zu");
-        DGL_EXPECT(writer.data[0], ==, 0x9988, uint32, "0x%X");
-        DGL_EXPECT(writer.data[1], ==, 0x07FFF8B9, uint32, "0x%X");
-        DGL_EXPECT(writer.data[2], ==, 0xF8000000, uint32, "0x%X");
-        DGL_EXPECT(writer.data[3], ==, 0x7FF, uint32, "0x%X");
-
-
-        Packet packet2 = {};
-        Bitstream reader = stream_reader_init(memory, array_count(memory));
-
-        count = serialize_packet(&reader, &packet2);
-        DGL_EXPECT(count, ==, 16, usize, "%zu");
-        DGL_EXPECT_int32(packet2.id, ==, 0x9988);
-        DGL_EXPECT_uint32(packet2.type, ==, Packet_Type_Request);
-        DGL_EXPECT_uint64(packet2.salt, ==, 0xFFFF00000000FFFF);
-        DGL_EXPECT_int32(packet2.index, ==, 23);
+        DGL_EXPECT_uint32(header2.size, ==, 1337);
     }
     DGL_END_TEST();
 
