@@ -37,12 +37,15 @@ ZHC_SEND_DATA(sdl_net_send_data)
     packet.address.port = target_address->port;
 #endif
 
-    UDPsocket udp_sock = (UDPsocket)socket->handle.platform;
-    int32 success = SDLNet_UDP_Send(udp_sock, -1, &packet);
-    if(success == 0)
+    if(socket->handle.no_error)
     {
-        LOG("Failed sending udp package: %s", SDLNet_GetError());
-        socket->handle.no_error = false;
+        UDPsocket udp_sock = (UDPsocket)socket->handle.platform;
+        int32 success = SDLNet_UDP_Send(udp_sock, -1, &packet);
+        if(success == 0)
+        {
+            LOG("Failed sending udp package: %s", SDLNet_GetError());
+            socket->handle.no_error = false;
+        }
     }
 }
 

@@ -395,6 +395,20 @@ packet_buffer_init(Connection_List *conns, Net_Conn_ID index, Packet packet)
     return(result);
 }
 
+// NOTE(dgl): closes current socket, if it exists.
+internal void
+net_open_socket(Net_Context *ctx)
+{
+    Zhc_Net_Socket *socket = &ctx->socket;
+    // NOTE(dgl): we cannot notify the peers if the socket has an error. They will have to try
+    // and get a denied packet when trying to send data. Then they have to reauthenticate.
+    dgl_memset(ctx->conns->state, Net_Conn_State_Disconnected, cast(usize)ctx->conns->max_count);
+    platform.close_socket(socket);
+    // TODO(dgl): arena not needed. Will be removed later.
+    platform.open_socket(0, socket);
+    assert(socket->handle.no_error, "Failed to open socket");
+    LOG_DEBUG("Listening for connection: %d.%d.%d.%d:%d", socket->address.ip[0], socket->address.ip[1], socket->address.ip[2], socket->address.ip[3], socket->address.port);
+}
 
 internal usize
 recv_packet(Net_Context *ctx, Zhc_Net_Address *address, Packet *packet, uint8 *buffer, usize buffer_size)
@@ -435,10 +449,7 @@ recv_packet(Net_Context *ctx, Zhc_Net_Address *address, Packet *packet, uint8 *b
 internal void
 send_denied_packet(Net_Context *ctx, Zhc_Net_Address address)
 {
-    Packet packet = {};
-    packet.id = 0x1234;
-    packet.version = parse_version(ZHC_VERSION);
-    packet.type = Packet_Type_Denied;
+    Packet packet = default_packet(Packet_Type_Denied);
 
     uint8 buffer[NET_MTU_SIZE] = {};
     Bitstream writer = stream_writer_init(buffer, array_count(buffer));
@@ -446,6 +457,23 @@ send_denied_packet(Net_Context *ctx, Zhc_Net_Address address)
 
     platform.send_data(&ctx->socket, &address, buffer, count);
     LOG_DEBUG("Sending denied packet");
+}
+
+
+internal void
+send_discovery_packet(Net_Context *ctx)
+{
+    Packet packet = default_packet(Packet_Type_Server_Discovery);
+
+    uint8 buffer[NET_MTU_SIZE] = {};
+    Bitstream writer = stream_writer_init(buffer, array_count(buffer));
+    usize count = serialize_packet_(&writer, &packet);
+
+    // TODO(dgl): should we use a subnet broadcast?
+    Zhc_Net_Address address = { .host=0xFFFFFFFF, .port=ZHC_SERVER_PORT };
+
+    platform.send_data(&ctx->socket, &address, buffer, count);
+    LOG_DEBUG("Sending discovery packet");
 }
 
 internal bool32
@@ -460,16 +488,6 @@ packet_is_valid(Connection_List *conns, Net_Conn_ID index, Packet packet)
     {
         result = true;
     }
-
-    return(result);
-}
-
-internal Net_Message
-build_default_header(Net_Message_Type type)
-{
-    Net_Message result = {};
-    result.version = parse_version(ZHC_VERSION);
-    result.type = type;
 
     return(result);
 }
@@ -548,25 +566,17 @@ net_send_pending_packet_buffers(Net_Context *ctx)
     }
 }
 
-// NOTE(dgl): This is only temporary. We will have a broadcast message from the server, with
-// the servers ip and port. When we receive this message an do not have a connection
-// we initiate a new attempt.
 internal void
 net_request_server_connection(Net_Context *ctx)
 {
     assert(!ctx->is_server, "Only clients can connect to a server");
-
-    Zhc_Net_Address address = parse_address(ZHC_SERVER_IP, ZHC_SERVER_PORT);
-    Net_Conn_ID server = get_connection(ctx->conns, address);
-    if(server < 0 || ctx->conns->state[server] == Net_Conn_State_Disconnected)
+    // NOTE(dgl): a client only has one connection slot available.
+    // if this is not connected, we send a discovery packet to request
+    // the connection to a server. We connect to the server replying the fastest.
+    // However, currently we do not support having multiple servers.
+    if(ctx->conns->state[0] == Net_Conn_State_Disconnected)
     {
-        LOG_DEBUG("Pushing new server connection");
-        uint64 salt = 0;
-        get_random_bytes(cast(uint8 *)&salt, sizeof(salt));
-        Net_Conn_ID server = push_connection(ctx->conns, address, salt);
-
-        Packet packet = default_packet(Packet_Type_Request);
-        packet_buffer_init(ctx->conns, server, packet);
+        send_discovery_packet(ctx);
     }
 }
 
@@ -579,11 +589,12 @@ server_process_packet(Net_Context *ctx, Zhc_Net_Address address, Packet packet)
 
     if(packet.id != 0x1234) { return(result); }
     // NOTE(dgl): prepare new incoming connection.
-    if(packet.type == Packet_Type_Request)
+    if(packet.type == Packet_Type_Server_Discovery)
     {
         uint64 salt = 0;
         get_random_bytes(cast(uint8 *)&salt, sizeof(salt));
         index = push_connection(conns, address, salt);
+        LOG_DEBUG("Client request from %u.%u.%u.%u:%u", address.ip[0], address.ip[1], address.ip[2], address.ip[3], address.port);
         if(index < 0)
         {
             LOG("No free connection available");
@@ -591,9 +602,8 @@ server_process_packet(Net_Context *ctx, Zhc_Net_Address address, Packet packet)
         }
         else
         {
-            Packet resp = default_packet(Packet_Type_Challenge);
+            Packet resp = default_packet(Packet_Type_Request);
             packet_buffer_init(conns, index, resp);
-            conns->salt[index] ^= packet.salt;
         }
     }
     else if((index = get_connection(conns, address)) >= 0)
@@ -602,20 +612,18 @@ server_process_packet(Net_Context *ctx, Zhc_Net_Address address, Packet packet)
         {
             conns->state[index] = Net_Conn_State_Disconnected;
         }
+        else if((packet.type == Packet_Type_Challenge) &&
+           (conns->state[index] == Net_Conn_State_Connecting))
+        {
+            LOG_DEBUG("Received client salt %llx, server salt %llx", packet.salt, conns->salt[index]);
+            conns->salt[index] ^= packet.salt;
+            Packet resp = default_packet(Packet_Type_Challenge_Resp);
+            packet_buffer_init(conns, index, resp);
+        }
         else if(packet_is_valid(conns, index, packet))
         {
-            if((packet.type == Packet_Type_Challenge_Resp) &&
-               (conns->state[index] == Net_Conn_State_Connecting))
-            {
-                // NOTE(dgl): we do not set the connection to connected yet,
-                // to spam the packet to the client when we send the pending buffers.
-                // The connection is set to connected on the first payload packet
-                // from the client.
-                Packet resp = default_packet(Packet_Type_Empty);
-                packet_buffer_init(conns, index, resp);
-            }
-            else if((packet.type == Packet_Type_Disconnect) &&
-                    (conns->state[index] == Net_Conn_State_Connected))
+            if((packet.type == Packet_Type_Disconnect) &&
+               (conns->state[index] == Net_Conn_State_Connected))
             {
                 conns->state[index] = Net_Conn_State_Disconnected;
             }
@@ -656,23 +664,42 @@ client_process_packet(Net_Context *ctx, Zhc_Net_Address address, Packet packet)
 
     Connection_List *conns = ctx->conns;
 
-    if((index = get_connection(conns, address)) >= 0)
+    if(packet.type == Packet_Type_Request)
+    {
+        uint64 salt = 0;
+        get_random_bytes(cast(uint8 *)&salt, sizeof(salt));
+        index = push_connection(conns, address, salt);
+        LOG_DEBUG("Server request from %u.%u.%u.%u:%u", address.ip[0], address.ip[1], address.ip[2], address.ip[3], address.port);
+        if(index < 0)
+        {
+            LOG("No free connection available");
+            send_denied_packet(ctx, address);
+        }
+        else
+        {
+            Packet resp = default_packet(Packet_Type_Challenge);
+            packet_buffer_init(conns, index, resp);
+            conns->salt[index] ^= packet.salt;
+        }
+    }
+    else if((index = get_connection(conns, address)) >= 0)
     {
         if(packet.type == Packet_Type_Denied)
         {
             conns->state[index] = Net_Conn_State_Disconnected;
         }
-        else if((packet.type == Packet_Type_Challenge) &&
-               (conns->state[index] == Net_Conn_State_Connecting))
-        {
-            LOG_DEBUG("Received server salt %llx, Client salt %llx", packet.salt, conns->salt[index]);
-            conns->salt[index] ^= packet.salt;
-            Packet resp = default_packet(Packet_Type_Challenge_Resp);
-            packet_buffer_init(conns, index, resp);
-        }
         else if(packet_is_valid(conns, index, packet))
         {
-            if((packet.type == Packet_Type_Disconnect) &&
+            if((packet.type == Packet_Type_Challenge_Resp) &&
+               (conns->state[index] == Net_Conn_State_Connecting))
+            {
+                conns->state[index] = Net_Conn_State_Connected;
+
+                Net_Message message = {};
+                message.type = Net_Message_Hash_Req;
+                net_send_message(ctx, index, message);
+            }
+            else if((packet.type == Packet_Type_Disconnect) &&
                     (conns->state[index] == Net_Conn_State_Connected))
             {
                 conns->state[index] = Net_Conn_State_Disconnected;
@@ -790,127 +817,114 @@ net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, Net_Message *message)
 {
     Net_Conn_ID result = -1;
 
-    Zhc_Net_Socket *socket = &ctx->socket;
-    if(socket->handle.no_error)
+    usize memory_size = NET_MTU_SIZE;
+    uint8 *memory = dgl_mem_arena_push_array(arena, uint8, memory_size);
+
+    // TODO(dgl): reveive the payload. If message type is chunk or slice do not return
+    // and check for more available messages. If there is no message pending, send an ack
+    // to the peer. If everything has been received return a Data Res message. Put the
+    // chunk_buffer as payload.
+
+
+    bool32 chunk_buffer_updated = false;
+    Net_Conn_ID index = -1;
+    Packet packet = {};
+    Zhc_Net_Address address = {};
+    while(recv_packet(ctx, &address, &packet, memory, memory_size))
     {
+        if(ctx->is_server) { index = server_process_packet(ctx, address, packet); }
+        else { index = client_process_packet(ctx, address, packet); }
 
-        usize memory_size = NET_MTU_SIZE;
-        uint8 *memory = dgl_mem_arena_push_array(arena, uint8, memory_size);
-
-        // TODO(dgl): reveive the payload. If message type is chunk or slice do not return
-        // and check for more available messages. If there is no message pending, send an ack
-        // to the peer. If everything has been received return a Data Res message. Put the
-        // chunk_buffer as payload.
-
-
-        bool32 chunk_buffer_updated = false;
-        Net_Conn_ID index = -1;
-        Packet packet = {};
-        Zhc_Net_Address address = {};
-        while(recv_packet(ctx, &address, &packet, memory, memory_size))
+        if(index >= 0)
         {
-            if(ctx->is_server) { index = server_process_packet(ctx, address, packet); }
-            else { index = client_process_packet(ctx, address, packet); }
-
-            if(index >= 0)
+            if(packet.type == Packet_Type_Chunk)
             {
-                if(packet.type == Packet_Type_Chunk)
+                if(ctx->chunk_info.hash != packet.chunk.hash)
                 {
-                    if(ctx->chunk_info.hash != packet.chunk.hash)
-                    {
-                        chunk_buffer_updated = true;
-                        usize slice_size = NET_MTU_SIZE - get_serialized_packet_size(Packet_Type_Slice);
-                        usize chunk_size = (slice_size*packet.chunk.slice_count) - (slice_size - packet.chunk.last_slice_size);
-                        assert(chunk_size < ctx->chunk_buffer_size, "Chunk buffer overflow");
+                    chunk_buffer_updated = true;
+                    usize slice_size = NET_MTU_SIZE - get_serialized_packet_size(Packet_Type_Slice);
+                    usize chunk_size = (slice_size*packet.chunk.slice_count) - (slice_size - packet.chunk.last_slice_size);
+                    assert(chunk_size < ctx->chunk_buffer_size, "Chunk buffer overflow");
 
-                        ctx->chunk_info.slice_count = packet.chunk.slice_count;
-                        ctx->chunk_info.hash = packet.chunk.hash;
-                        ctx->chunk_info.last_slice_size= packet.chunk.last_slice_size;
-                        ctx->chunk_type = packet.msg_type;
-                        LOG_DEBUG("Prepare receiving new chunk %u of size %llu", packet.chunk.hash, chunk_size);
-                    }
-                }
-                else if(packet.type == Packet_Type_Slice)
-                {
-                    if(ctx->chunk_info.hash == packet.slice.hash)
-                    {
-                        assert(packet.slice.index < ctx->chunk_info.slice_count, "Invalid slice index");
-                        chunk_buffer_updated = true;
-                        usize slice_size = get_serialized_packet_size(Packet_Type_Slice);
-                        usize ack_size = get_serialized_packet_size(Packet_Type_Ack);
-                        usize payload_size = NET_MTU_SIZE - slice_size;
-                        usize offset = cast(usize)packet.slice.index * payload_size;
+                    ctx->chunk_info.slice_count = packet.chunk.slice_count;
+                    ctx->chunk_info.hash = packet.chunk.hash;
+                    ctx->chunk_info.last_slice_size= packet.chunk.last_slice_size;
+                    ctx->chunk_type = packet.msg_type;
 
-                        // TODO(dgl): @cleanup should be returned by recv_packet
-                        // It would be great to have recv_packet and recv_payload separately.
-                        dgl_memcpy(ctx->chunk_buffer + offset, packet.payload, packet.payload_size);
-
-                        assert((ctx->chunk_info.slice_count / 8) + 1 <= array_count(ctx->ack_buffer.data) - ack_size, "Cannot have more slices than bits in the ack buffer");
-                        int32 mask_byte = packet.slice.index / 8;
-                        uint32 mask_bit = 1 << (packet.slice.index % 8);
-                        ctx->ack_buffer.data[mask_byte] |= mask_bit;
-                    }
-                }
-                else if(packet.type == Packet_Type_Ack)
-                {
-                    if(packet.ack.hash == ctx->chunk_info.hash)
-                    {
-                        uint8 *ack_buffer = packet.payload;
-                        usize ack_buffer_size = packet.payload_size;
-                        assert(ack_buffer, "Invalid ack buffer");
-                        if(!chunk_complete(ack_buffer, ack_buffer_size, ctx->chunk_info.slice_count))
-                        {
-                            send_chunk_buffer(ctx, index, ack_buffer, ack_buffer_size);
-                        }
-                    }
-                }
-                else
-                {
-                    message->version = packet.version;
-                    message->type = packet.msg_type;
-                    message->payload = packet.payload;
-                    message->payload_size = packet.payload_size;
-                    LOG_DEBUG("message type %d, payload %p, payload_size %llu", message->type, message->payload, message->payload_size);
-                    result = index;
+                    dgl_memset(ctx->ack_buffer.data, 0, array_count(ctx->ack_buffer.data));
+                    LOG_DEBUG("Prepare receiving new chunk %u of size %llu", packet.chunk.hash, chunk_size);
                 }
             }
-        }
-
-        if(chunk_buffer_updated)
-        {
-            if(chunk_complete(ctx->ack_buffer.data, array_count(ctx->ack_buffer.data), ctx->chunk_info.slice_count))
+            else if(packet.type == Packet_Type_Slice)
             {
-                LOG_DEBUG("All chunk slices received");
-                usize slice_size = get_serialized_packet_size(Packet_Type_Slice);
-                usize payload_size = NET_MTU_SIZE - slice_size;
+                if(ctx->chunk_info.hash == packet.slice.hash)
+                {
+                    assert(packet.slice.index < ctx->chunk_info.slice_count, "Invalid slice index");
+                    chunk_buffer_updated = true;
+                    usize slice_size = get_serialized_packet_size(Packet_Type_Slice);
+                    usize ack_size = get_serialized_packet_size(Packet_Type_Ack);
+                    usize payload_size = NET_MTU_SIZE - slice_size;
+                    usize offset = cast(usize)packet.slice.index * payload_size;
 
-                message->version = packet.version;
-                message->type = ctx->chunk_type;
-                message->payload_size = (cast(usize)(ctx->chunk_info.slice_count - 1) * payload_size) + ctx->chunk_info.last_slice_size;
-                message->payload = ctx->chunk_buffer;
-                result = index;
+                    // TODO(dgl): @cleanup should be returned by recv_packet
+                    // It would be great to have recv_packet and recv_payload separately.
+                    dgl_memcpy(ctx->chunk_buffer + offset, packet.payload, packet.payload_size);
+
+                    assert((ctx->chunk_info.slice_count / 8) + 1 <= array_count(ctx->ack_buffer.data) - ack_size, "Cannot have more slices than bits in the ack buffer");
+                    int32 mask_byte = packet.slice.index / 8;
+                    uint32 mask_bit = 1 << (packet.slice.index % 8);
+                    ctx->ack_buffer.data[mask_byte] |= mask_bit;
+                }
+            }
+            else if(packet.type == Packet_Type_Ack)
+            {
+                if(packet.ack.hash == ctx->chunk_info.hash)
+                {
+                    uint8 *ack_buffer = packet.payload;
+                    usize ack_buffer_size = packet.payload_size;
+                    assert(ack_buffer, "Invalid ack buffer");
+                    if(!chunk_complete(ack_buffer, ack_buffer_size, ctx->chunk_info.slice_count))
+                    {
+                        send_chunk_buffer(ctx, index, ack_buffer, ack_buffer_size);
+                    }
+                }
             }
             else
             {
-                LOG_DEBUG("Sending chunk ack buffer");
-                Packet ack_packet = default_packet(Packet_Type_Ack);
-                ack_packet.ack.hash = ctx->chunk_info.hash;
-                Packet_Buffer *buffer = packet_buffer_init(ctx->conns, index, ack_packet);
-                // TODO(dgl): send only the necessary bits...
-                packet_buffer_append(buffer, ctx->ack_buffer.data, (ctx->chunk_info.slice_count / 8) + 1);
-                net_send_packet_buffer(ctx, index);
+                message->version = packet.version;
+                message->type = packet.msg_type;
+                message->payload = packet.payload;
+                message->payload_size = packet.payload_size;
+                LOG_DEBUG("message type %d, payload %p, payload_size %llu", message->type, message->payload, message->payload_size);
+                result = index;
             }
         }
     }
-    else
+
+    if(chunk_buffer_updated)
     {
-        // NOTE(dgl): we cannot notify the peers if the socket has an error. They will have to try
-        // and get a denied packet when trying to send data. Then they have to reauthenticate.
-        dgl_memset(ctx->conns->state, Net_Conn_State_Disconnected, cast(usize)ctx->conns->max_count);
-        platform.close_socket(socket);
-        // TODO(dgl): arena not needed. Will be removed later.
-        platform.open_socket(0, socket);
-        LOG_DEBUG("Listening for connection: %d.%d.%d.%d:%d", socket->address.ip[0], socket->address.ip[1], socket->address.ip[2], socket->address.ip[3], socket->address.port);
+        if(chunk_complete(ctx->ack_buffer.data, array_count(ctx->ack_buffer.data), ctx->chunk_info.slice_count))
+        {
+            LOG_DEBUG("All chunk slices received");
+            usize slice_size = get_serialized_packet_size(Packet_Type_Slice);
+            usize payload_size = NET_MTU_SIZE - slice_size;
+
+            message->version = packet.version;
+            message->type = ctx->chunk_type;
+            message->payload_size = (cast(usize)(ctx->chunk_info.slice_count - 1) * payload_size) + ctx->chunk_info.last_slice_size;
+            message->payload = ctx->chunk_buffer;
+            result = index;
+        }
+        else
+        {
+            LOG_DEBUG("Sending chunk ack buffer");
+            Packet ack_packet = default_packet(Packet_Type_Ack);
+            ack_packet.ack.hash = ctx->chunk_info.hash;
+            Packet_Buffer *buffer = packet_buffer_init(ctx->conns, index, ack_packet);
+            // TODO(dgl): send only the necessary bits...
+            packet_buffer_append(buffer, ctx->ack_buffer.data, (ctx->chunk_info.slice_count / 8) + 1);
+            net_send_packet_buffer(ctx, index);
+        }
     }
 
     return(result);
@@ -975,25 +989,30 @@ build_packet(Net_Context *ctx, Net_Message message)
     return(result);
 }
 
-// NOTE(dgl): we could merge the send_hash and send_data into send_message and decide on the type
-// how we want to send the message. @cleanup
 // TODO(dgl): refactor this into send message and send message with payload
 internal void
 net_send_message(Net_Context *ctx, Net_Conn_ID index, Net_Message message)
 {
-    Packet packet = build_packet(ctx, message);
-    Packet_Buffer *buffer = packet_buffer_init(ctx->conns, index, packet);
-
-    if(packet.type == Packet_Type_Payload)
+    if(index >= 0 && ctx->conns->state[index] == Net_Conn_State_Connected)
     {
-        packet_buffer_append(buffer, message.payload, message.payload_size);
+        Packet packet = build_packet(ctx, message);
+        Packet_Buffer *buffer = packet_buffer_init(ctx->conns, index, packet);
+
+        if(packet.type == Packet_Type_Payload)
+        {
+            packet_buffer_append(buffer, message.payload, message.payload_size);
+        }
+
+        net_send_packet_buffer(ctx, index);
+
+        if(packet.type == Packet_Type_Chunk)
+        {
+            send_chunk_buffer(ctx, index, 0, 0);
+        }
     }
-
-    net_send_packet_buffer(ctx, index);
-
-    if(packet.type == Packet_Type_Chunk)
+    else
     {
-        send_chunk_buffer(ctx, index, 0, 0);
+        LOG("Client on index %d is not connected. Cannot send message", index);
     }
 }
 

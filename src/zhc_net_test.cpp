@@ -75,7 +75,7 @@ main(int argc, char **argv)
         DGL_EXPECT(writer.data[1], ==, 0x10203, uint32, "0x%X");
         DGL_EXPECT(writer.data[2], ==, 0x0000FFFF, uint32, "0x%X");
         DGL_EXPECT(writer.data[3], ==, 0xFFFF0000, uint32, "0x%X");
-        DGL_EXPECT(writer.data[4], ==, 0x1, uint32, "0x%X");
+        DGL_EXPECT(writer.data[4], ==, 0x2, uint32, "0x%X");
 
         Packet packet2 = {};
         Bitstream reader = stream_reader_init(memory, array_count(memory));

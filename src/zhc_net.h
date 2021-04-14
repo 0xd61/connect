@@ -63,6 +63,7 @@ enum Packet_Type
 {
     // NOTE(dgl): pending types
     Packet_Type_Denied,
+    Packet_Type_Server_Discovery,
     Packet_Type_Request,
     Packet_Type_Challenge,
     Packet_Type_Challenge_Resp,
@@ -173,5 +174,17 @@ struct Net_Context
 
     Connection_List *conns;
 };
+
+
+internal Net_Context * net_init_server(DGL_Mem_Arena *arena);
+internal Net_Context * net_init_client(DGL_Mem_Arena *arena);
+internal void net_open_socket(Net_Context *ctx);
+internal void net_send_message(Net_Context *ctx, Net_Conn_ID index, Net_Message message);
+internal Net_Conn_ID net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, Net_Message *message);
+internal void net_send_packet_buffer(Net_Context *ctx, Net_Conn_ID index);
+internal void net_send_pending_packet_buffers(Net_Context *ctx);
+internal void net_request_server_connection(Net_Context *ctx);
+
+
 
 #endif // ZHC_NET_H

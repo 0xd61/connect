@@ -234,9 +234,6 @@ struct Zhc_Net_Socket
 {
     Zhc_Net_Address address;
     Zhc_File_Handle handle;
-    // NOTE(dgl): @deprecated please do not use this.
-    void *platform;
-    bool32 no_error;
 };
 
 // NOTE(dgl): Global api. Use separate api file later...

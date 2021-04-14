@@ -9,6 +9,7 @@
     - Crash on android landscape
     - if filesize too large, we get a segfault (probably an isseue with sending an not loaded file!?)
     - Better packet buffer strategy to be able to resend if necessary
+    - Handle connection timeouts
     - Packet throttle for large chunks to not flood the bandwidth
 */
 
@@ -246,6 +247,11 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         do_render = true;
     }
 
+    if(state->net_ctx->socket.handle.no_error == false)
+    {
+        net_open_socket(state->net_ctx);
+    }
+
     Net_Message message = {};
     Net_Conn_ID client = 0;
     while((client = net_recv_message(&state->transient_arena, state->net_ctx, &message)) >= 0)
@@ -359,9 +365,23 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         state->force_render = false;
     }
 
+    if(state->net_ctx->socket.handle.no_error == false)
+    {
+        net_open_socket(state->net_ctx);
+    }
+
+    // TODO(dgl): if we send too many discovery packets (more than one before we receive an answer),
+    // the salt is overwritten on the server and the server sends an invalid salt.
+    // We need a more robust solution for this!!
+    state->net_discover_timeout += input->last_frame_in_ms;
+    if(state->net_discover_timeout > 1000.0f)
+    {
+        state->net_discover_timeout = 0;
+        net_request_server_connection(state->net_ctx);
+    }
+
     Net_Message message = {};
     Net_Conn_ID client = 0;
-    net_request_server_connection(state->net_ctx);
     while((client = net_recv_message(&state->transient_arena, state->net_ctx, &message)) >= 0)
     {
         switch(message.type)

@@ -10,13 +10,7 @@
 // TODO(dgl): use version stored in byte format.
 /* 16 bit major, 8 bit minor, 8 bit patch */
 #define ZHC_VERSION "0.1.0"
-#if ZHC_INTERNAL
-#define ZHC_SERVER_IP "192.168.101.124"
 #define ZHC_SERVER_PORT 1337
-#else
-#define ZHC_SERVER_IP "192.168.13.37"
-#define ZHC_SERVER_PORT 1337
-#endif
 
 // NOTE(dgl): This size is cannot be larger than the amount of bits
 // that are available in an ACK package (MTU size - ACK header size)
@@ -48,6 +42,7 @@ struct Lib_State
     Zhc_File_Group *files;
     int32 desired_file_id;
 
+    real32 net_discover_timeout;
     Net_Context *net_ctx;
 
     Zhc_Input old_input;
