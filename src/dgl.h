@@ -173,11 +173,18 @@ dgl_safe_size_to_uint32(usize value)
 DGL_DEF inline int32
 dgl_safe_size_to_int32(usize value)
 {
-    dgl_assert(value <= 0xFFFFFFFF, "Failed to safely truncate value");
+    dgl_assert(value <= 0x7FFFFFFF, "Failed to safely cast value");
     int32 result = dgl_cast(int32)value;
     return(result);
 }
 
+DGL_DEF inline int32
+dgl_safe_uint32_to_int32(uint32 value)
+{
+   dgl_assert(value <= 0x7FFFFFFF, "Failed to safely cast value");
+   int32 result = dgl_cast(int32)value;
+   return(result);
+}
 
 //
 // Intrinsics

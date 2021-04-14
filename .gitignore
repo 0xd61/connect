@@ -31,6 +31,10 @@
 *.out
 *.app
 
-SDL2-*
-SDL2_*
+/SDL2-*/
+/SDL2_*/
 /build/
+/libsodium*/
+/src/lib/sodium.h
+/src/lib/sodium*/
+

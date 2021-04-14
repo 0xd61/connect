@@ -53,7 +53,7 @@ parse_version(char *string)
     assert(segment == 2, "Failed parsing the version number (too many segments)");
     assert(number <= 0xFF && number >= 0, "Invalid version segment (cannot be bigger than 255)");
     result |= cast(uint32)number;
-    
+
     return(result);
 }
 

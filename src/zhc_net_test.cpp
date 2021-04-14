@@ -1,4 +1,5 @@
 #include "zhc_lib.h"
+#include "zhc_crypto.cpp"
 #include "zhc_net.cpp"
 
 #define DGL_IMPLEMENTATION
@@ -56,38 +57,35 @@ main(int argc, char **argv)
     }
     DGL_END_TEST();
 
-    DGL_BEGIN_TEST("serializes header");
+    DGL_BEGIN_TEST("serializes packet");
     {
-        Net_Msg_Header header1 = {};
-        header1.type = Net_Msg_Header_Hash_Req;
-        header1.version = parse_version("1.2.3");
-        header1.size = dgl_safe_size_to_uint32(1337);
+        Packet packet1 = {};
+        packet1.id = 0x9988;
+        packet1.version = parse_version("1.2.3");
+        packet1.type = Packet_Type_Request;
+        packet1.salt = 0xFFFF00000000FFFF;
 
-        uint8 memory[sizeof(header1)] = {};
+        uint8 memory[sizeof(packet1)] = {};
         Bitstream writer = stream_writer_init(memory, array_count(memory));
 
-        usize count = serialize_header(&writer, &header1);
+        usize count = serialize_packet_(&writer, &packet1);
 
-        DGL_EXPECT(count, ==, 8, usize, "%zu");
-        DGL_EXPECT(writer.data[0], ==, 0x00010203, uint32, "0x%X");
-        DGL_EXPECT(writer.data[1], ==, 0x29C9, uint32, "0x%X"); /* 0101 0011 1001 (1337) and 001*/
-        DGL_EXPECT(writer.data[2], ==, 0x0, uint32, "0x%X");
+        DGL_EXPECT(count, ==, 20, usize, "%zu");
+        DGL_EXPECT(writer.data[0], ==, 0x09988, uint32, "0x%X");
+        DGL_EXPECT(writer.data[1], ==, 0x10203, uint32, "0x%X");
+        DGL_EXPECT(writer.data[2], ==, 0x0000FFFF, uint32, "0x%X");
+        DGL_EXPECT(writer.data[3], ==, 0xFFFF0000, uint32, "0x%X");
+        DGL_EXPECT(writer.data[4], ==, 0x1, uint32, "0x%X");
 
-//         for(int32 index = 0; index < array_count(memory); ++index)
-//         {
-//             printf("0x%X ", memory[index]);
-//         }
-//         printf("\n");
-
-
-        Net_Msg_Header header2 = {};
+        Packet packet2 = {};
         Bitstream reader = stream_reader_init(memory, array_count(memory));
 
-        count = serialize_header(&reader, &header2);
-        DGL_EXPECT(count, ==, 8, usize, "%zu");
-        DGL_EXPECT_uint32(header2.type, ==, Net_Msg_Header_Hash_Req);
-        DGL_EXPECT_uint32(header2.version, ==, parse_version("1.2.3"));
-        DGL_EXPECT_uint32(header2.size, ==, 1337);
+        count = serialize_packet_(&reader, &packet2);
+        DGL_EXPECT(count, ==, 20, usize, "%zu");
+        DGL_EXPECT_int32(packet2.id, ==, packet1.id);
+        DGL_EXPECT_uint32(packet2.version, ==, packet1.version);
+        DGL_EXPECT_uint32(packet2.type, ==, packet1.type);
+        DGL_EXPECT_uint64(packet2.salt, ==, packet1.salt);
     }
     DGL_END_TEST();
 

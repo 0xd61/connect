@@ -95,9 +95,10 @@ int main(int argc, char *argv[])
         memory.api.get_directory_filenames = get_directory_filenames;
         memory.api.get_data_base_path = sdl_internal_storage_path;
         memory.api.get_user_data_base_path = sdl_external_storage_path;
-        memory.api.open_socket = sdl_net_server_setup_socket_set;
-        memory.api.send_data = sdl_net_server_send_data;
-        memory.api.receive_data = sdl_net_server_receive_data;
+        memory.api.open_socket = sdl_net_open_socket;
+        memory.api.close_socket = sdl_net_close_socket;
+        memory.api.send_data = sdl_net_send_data;
+        memory.api.receive_data = sdl_net_receive_data;
 
         Zhc_Offscreen_Buffer back_buffer = {};
         Zhc_Input input = {};
@@ -246,6 +247,10 @@ int main(int argc, char *argv[])
             last_counter = end_counter;
         }
 
+    }
+    else
+    {
+        LOG("Not enough memory available");
     }
 
     SDL_EnableScreenSaver();
