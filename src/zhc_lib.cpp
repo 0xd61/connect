@@ -370,15 +370,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         net_open_socket(state->net_ctx);
     }
 
-    // TODO(dgl): if we send too many discovery packets (more than one before we receive an answer),
-    // the salt is overwritten on the server and the server sends an invalid salt.
-    // We need a more robust solution for this!!
-    state->net_discover_timeout += input->last_frame_in_ms;
-    if(state->net_discover_timeout > 1000.0f)
-    {
-        state->net_discover_timeout = 0;
-        net_request_server_connection(state->net_ctx);
-    }
+    net_request_server_connection(state->net_ctx);
 
     Net_Message message = {};
     Net_Conn_ID client = 0;

@@ -42,7 +42,6 @@ struct Lib_State
     Zhc_File_Group *files;
     int32 desired_file_id;
 
-    real32 net_discover_timeout;
     Net_Context *net_ctx;
 
     Zhc_Input old_input;

@@ -46,12 +46,14 @@ struct Connection_List
     Zhc_Net_Address *address;
     uint64 *salt;
     Net_Conn_State *state;
+    uint32 *last_packet_hash;
     Packet_Buffer *packet_buffer; /* to be able to resend packages. */
 };
 
 enum Net_Message_Type
 {
     Net_Message_Noop,
+    Net_Message_Disconnect,
     Net_Message_Hash_Req,
     Net_Message_Hash_Res,
     Net_Message_Data_Req,
@@ -107,7 +109,7 @@ struct Packet_Slice
 struct Packet
 {
     int32 id;
-    uint32 version;
+    uint32 version; /* 16 bit major, 8 bit minor, 8 bit patch */
     uint64 salt;
     // TODO(dgl): put CRC32 in here?
 
@@ -121,15 +123,10 @@ struct Packet
         Packet_Slice slice;
         Packet_Ack ack;
     };
-
-    // NOTE(dgl): not serialized
-    usize payload_size;
-    uint8 *payload;
 };
 
 struct Net_Message
 {
-    uint32 version; /* 16 bit major, 8 bit minor, 8 bit patch */
     Net_Message_Type type;
 
     usize payload_size;
@@ -156,6 +153,8 @@ struct Net_Context
     // However, if we do this, we lose our spamming packets incase they are lost
     // ability during the connecting state. IMO this should not be a big issue.
     // But we have to test this.
+    // NOTE(dgl): It is not possible to send and receive a chunk at the same time.
+    // In this application only the server sends chunks to the client!!
     Packet_Chunk chunk_info;
     Net_Message_Type chunk_type;
     usize chunk_buffer_size;

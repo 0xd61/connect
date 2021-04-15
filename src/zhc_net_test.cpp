@@ -68,7 +68,7 @@ main(int argc, char **argv)
         uint8 memory[sizeof(packet1)] = {};
         Bitstream writer = stream_writer_init(memory, array_count(memory));
 
-        usize count = serialize_packet_(&writer, &packet1);
+        usize count = serialize_packet(&writer, &packet1);
 
         DGL_EXPECT(count, ==, 20, usize, "%zu");
         DGL_EXPECT(writer.data[0], ==, 0x09988, uint32, "0x%X");
@@ -80,7 +80,7 @@ main(int argc, char **argv)
         Packet packet2 = {};
         Bitstream reader = stream_reader_init(memory, array_count(memory));
 
-        count = serialize_packet_(&reader, &packet2);
+        count = serialize_packet(&reader, &packet2);
         DGL_EXPECT(count, ==, 20, usize, "%zu");
         DGL_EXPECT_int32(packet2.id, ==, packet1.id);
         DGL_EXPECT_uint32(packet2.version, ==, packet1.version);
