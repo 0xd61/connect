@@ -654,7 +654,7 @@ net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, Net_Message *message)
         usize packet_header_size = serialize_packet(&reader, &packet);
         memory_offset = packet_header_size;
 
-        LOG_DEBUG("Memory size: %llu, offset: %llu");
+        LOG_DEBUG("Memory size: %llu, offset: %llu", memory_size, memory_offset);
         assert(memory_size >= memory_offset, "Packet memory offset cannot be bigger than the memory size");
         uint8 *payload = memory + memory_offset;
         usize payload_size = memory_size - memory_offset;
@@ -715,7 +715,8 @@ net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, Net_Message *message)
                         {
                             assert(packet.slice.index < ctx->chunk_info.slice_count, "Invalid slice index");
                             chunk_buffer_updated = true;
-                            usize offset = cast(usize)packet.slice.index * payload_size;
+                            usize slice_size = NET_MTU_SIZE - get_serialized_packet_size(Packet_Type_Slice);
+                            usize offset = cast(usize)packet.slice.index * slice_size;
 
                             // TODO(dgl): @cleanup should be returned by recv_packet
                             // It would be great to have recv_packet and recv_payload separately.
