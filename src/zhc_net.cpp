@@ -612,6 +612,7 @@ send_chunk_buffer(Net_Context *ctx, Net_Conn_ID index, uint8 *ack_mask, usize ac
     }
 }
 
+// NOTE(dgl): messy. Needs a refactor @cleanup
 internal Net_Conn_ID
 net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, Net_Message *message)
 {
@@ -622,11 +623,6 @@ net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, Net_Message *message)
     Net_Conn_ID result = -1;
     Net_Conn_ID index = -1;
     Connection_List *conns = ctx->conns;
-
-    // TODO(dgl): reveive the payload. If message type is chunk or slice do not return
-    // and check for more available messages. If there is no message pending, send an ack
-    // to the peer. If everything has been received return a Data Res message. Put the
-    // chunk_buffer as payload.
 
     bool32 chunk_buffer_updated = false;
     Zhc_Net_Address address = {};
