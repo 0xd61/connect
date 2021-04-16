@@ -69,61 +69,73 @@ ren_draw_rectangle(Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
     }
 }
 
+internal V4
+intersect_rect(V4 a, V4 b)
+{
+    V4 result = {};
+
+    int32 x0 = dgl_max(a.x, b.x);
+    int32 y0 = dgl_max(a.y, b.y);
+    int32 x1 = dgl_min((a.x + a.w), (b.x + b.w));
+    int32 y1 = dgl_min((a.y + a.h), (b.y + b.h));
+
+    if (x1 < x0) x1 = x0;
+    if (y1 < y0) y1 = y0;
+
+    result = rect(x0, y0, x1 - x0, y1 - y0);
+    return(result);
+}
+
 internal void
 ren_draw_bitmap(Zhc_Offscreen_Buffer *buffer, Loaded_Image *image, V4 rect, V2 pos, V4 color)
 {
-    // TODO(dgl): Something is not right. An image 100x100 is drawm only about 1/3.
+    // NOTE(dgl): we do not clip the source. The caller must set the rect to the correct
+    // dimension of the image.
 
-    // TODO(dgl): refactor image and offset position
-    // this is currently not overflow safe.
+    assert(rect.x >= 0, "Rect x cannot be smaller than 0");
+    assert(rect.y >= 0, "Rect x cannot be smaller than 0");
+    assert(rect.w <= image->width, "Rect w cannot be greater than the image width");
+    assert(rect.h <= image->height, "Rect h cannot be greater than the image height");
 
-    int32 src_min_x = dgl_clamp(rect.x, 0, image->width);
-    int32 src_min_y = dgl_clamp(rect.y, 0, image->height);
-    int32 src_max_x = dgl_clamp(rect.x + rect.w, src_min_x, image->width);
-    int32 src_max_y = dgl_clamp(rect.y + rect.h, src_min_y, image->height);
+    // NOTE(dgl): We increase the min_x and min_y positions by the underflow to
+    // have them always larger than 0
+    int32 underflow_x = dgl_min(pos.x, 0);
+    int32 underflow_y = dgl_min(pos.y, 0);
+    int32 min_x = pos.x - underflow_x;
+    int32 min_y = pos.y - underflow_y;
+    int32 max_x = dgl_min(pos.x + rect.w, buffer->width);
+    int32 max_y = dgl_min(pos.y + rect.h, buffer->height);
 
-    int32 dest_min_x = dgl_clamp(pos.x, 0, buffer->width);
-    int32 dest_min_y = dgl_clamp(pos.y, 0, buffer->height);
-    int32 dest_max_x = dgl_clamp(pos.x + rect.w, dest_min_x, buffer->width);
-    int32 dest_max_y = dgl_clamp(pos.y + rect.h, dest_min_y, buffer->height);
 
+    // NOTE(dgl): we apply the underflow here to start copying the pixels from the correct
+    // position. Otherwise we would always start from the top. But if we scroll e.g. upwrads
+    // the top must be hidden and only the bottom should be drawn.
     uint32 *source_row = image->pixels +
-                         src_min_x +
-                         src_min_y*image->width;
+                         (rect.x - underflow_x) +
+                         (rect.y - underflow_y)*image->width;
 
     uint8 *dest_row = ((uint8 *)buffer->memory +
-                      dest_min_x*buffer->bytes_per_pixel +
-                      dest_min_y*buffer->pitch);
+                      min_x*buffer->bytes_per_pixel +
+                      min_y*buffer->pitch);
 
-
-    int32 dest_y = dest_min_y;
-    int32 src_y = src_min_y;
-    while(src_y < src_max_y)
+    for(int32 y = min_y;
+        y < max_y;
+        ++y)
     {
         uint32 *source = source_row;
         uint32 *dest = (uint32 *)dest_row;
-        int32 src_x = src_min_x;
-        int32 dest_x = dest_min_x;
 
-        while(src_x < src_max_x)
+        for(int32 x = min_x;
+           x < max_x;
+           ++x)
         {
-            if(dest_y < dest_max_y && dest_x < dest_max_x)
-            {
-                *dest = blend_pixel(*source, *dest, color);
-            }
-
-            source++;
+            *dest = blend_pixel(*source, *dest, color);
             dest++;
-            src_x++;
-            dest_x++;
-
+            source++;
         }
 
         dest_row += buffer->pitch;
         source_row += image->width;
-
-        src_y++;
-        dest_y++;
     }
 }
 

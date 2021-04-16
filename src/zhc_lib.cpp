@@ -4,7 +4,6 @@
     - config file
     - Some kind of overflow in stbtt_BakeFontBitmap for (108px size fonts)
     - Render circles
-    - Renderer fix upper clipping
     - Crash on android landscape
     - if filesize too large, we get a segfault (probably an isseue with sending an not loaded file!?)
     - Better packet buffer strategy to be able to resend if necessary
