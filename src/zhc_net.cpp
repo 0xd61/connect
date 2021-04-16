@@ -633,20 +633,6 @@ net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, Net_Message *message)
     while((memory_size = platform.receive_data(&ctx->socket, &address, memory, memory_max_size)) > 0)
     {
         memory_offset = 0;
-        index = get_connection(ctx->conns, address);
-
-        // NOTE(dgl): we calculate the packet hash and compare it to the last received packet.
-        // This way we do not handle resent packets twice. This does not work, if the order of
-        // resent packets is somehow messed up, which can happen with UDP. If this is an issue
-        // we may have to reconsider this approach.
-        if(index >= 0)
-        {
-            uint32 packet_hash = HASH_OFFSET_BASIS;
-            hash(&packet_hash, memory, memory_size);
-
-            if(packet_hash == ctx->conns->last_packet_hash[index]) { continue; }
-            conns->last_packet_hash[index] = packet_hash;
-        }
 
         // NOTE(dgl): parse packet from memory buffer
         Packet packet = {};
@@ -671,6 +657,7 @@ net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, Net_Message *message)
         // because I don't really like mixing those.
         // TODO(dgl): the disconnect/denied state is not really defined. Must we send a disconnect packet
         // on each denied packet, to ensure a connection is reset if it has a connection state?
+        index = get_connection(ctx->conns, address);
         if(packet.type > _Packet_Type_Connected)
         {
             if(index >= 0 &&

@@ -69,23 +69,6 @@ ren_draw_rectangle(Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
     }
 }
 
-internal V4
-intersect_rect(V4 a, V4 b)
-{
-    V4 result = {};
-
-    int32 x0 = dgl_max(a.x, b.x);
-    int32 y0 = dgl_max(a.y, b.y);
-    int32 x1 = dgl_min((a.x + a.w), (b.x + b.w));
-    int32 y1 = dgl_min((a.y + a.h), (b.y + b.h));
-
-    if (x1 < x0) x1 = x0;
-    if (y1 < y0) y1 = y0;
-
-    result = rect(x0, y0, x1 - x0, y1 - y0);
-    return(result);
-}
-
 internal void
 ren_draw_bitmap(Zhc_Offscreen_Buffer *buffer, Loaded_Image *image, V4 rect, V2 pos, V4 color)
 {
