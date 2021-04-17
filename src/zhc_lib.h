@@ -10,7 +10,7 @@
 // TODO(dgl): use version stored in byte format.
 /* 16 bit major, 8 bit minor, 8 bit patch */
 #define ZHC_VERSION "0.1.0"
-#define ZHC_SERVER_PORT 1337
+#define ZHC_SERVER_PORT 8888
 
 // NOTE(dgl): This size is cannot be larger than the amount of bits
 // that are available in an ACK package (MTU size - ACK header size)
