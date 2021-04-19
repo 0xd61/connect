@@ -4,6 +4,7 @@
     - config file
     - Some kind of overflow in stbtt_BakeFontBitmap for (108px size fonts)
     - Render circles
+    - Cached rendering
     - Crash on android landscape
     - if filesize too large, we get a segfault (probably an isseue with sending an not loaded file!?)
     - Better packet buffer strategy to be able to resend if necessary
@@ -68,6 +69,36 @@
 
 #pragma warning(pop)
 #endif
+
+internal void
+send_request(Net_Context *ctx, Net_Conn_ID id, Net_Message_Type type)
+{
+    Net_Message message = {};
+    message.type = type;
+    net_send_message(ctx, id, message);
+}
+
+internal void
+send_filehash(Net_Context *ctx, Net_Conn_ID id, File *file)
+{
+    Net_Message message = {};
+    message.type = Net_Message_Hash_Res;
+    message.payload = cast(uint8 *)&file->hash;
+    message.payload_size = sizeof(file->hash);
+    LOG_DEBUG("Sending hash %u", file->hash);
+    net_send_message(ctx, id, message);
+}
+
+internal void
+send_file(Net_Context *ctx, Net_Conn_ID id, File *file)
+{
+    Net_Message message = {};
+    message.type = Net_Message_Data_Res;
+    message.payload = file->data;
+    message.payload_size = file->info->size;
+    LOG_DEBUG("Sending %d bytes of data with hash %u", message.payload_size, file->hash);
+    net_send_message(ctx, id, message);
+}
 
 internal bool32
 input_updated(Zhc_Input *a, Zhc_Input *b)
@@ -252,25 +283,17 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
     Net_Message message = {};
     Net_Conn_ID client = 0;
-    while((client = net_recv_message(&state->transient_arena, state->net_ctx, &message)) >= 0)
+    while((client = net_recv_message(&state->transient_arena, state->net_ctx, input->last_frame_in_ms, &message)) >= 0)
     {
         switch(message.type)
         {
             case Net_Message_Hash_Req:
             {
-                message.type = Net_Message_Hash_Res;
-                LOG_DEBUG("Sending hash %u", state->active_file.hash);
-                message.payload = cast(uint8 *)&state->active_file.hash;
-                message.payload_size = sizeof(state->active_file.hash);
-                net_send_message(state->net_ctx, client, message);
+                send_filehash(state->net_ctx, client, &state->active_file);
             } break;
             case Net_Message_Data_Req:
             {
-                message.type = Net_Message_Data_Res;
-                message.payload = state->active_file.data;
-                message.payload_size = state->active_file.info->size;
-                LOG_DEBUG("Sending %d bytes of data with hash %u", message.payload_size, state->active_file.hash);
-                net_send_message(state->net_ctx, client, message);
+                send_file(state->net_ctx, client, &state->active_file);
             } break;
             default:
             {
@@ -372,7 +395,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
     Net_Message message = {};
     Net_Conn_ID client = 0;
-    while((client = net_recv_message(&state->transient_arena, state->net_ctx, &message)) >= 0)
+    while((client = net_recv_message(&state->transient_arena, state->net_ctx, input->last_frame_in_ms, &message)) >= 0)
     {
         switch(message.type)
         {
@@ -384,8 +407,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
                 LOG_DEBUG("Received hash %u, active_file hash %u", hash, state->active_file.hash);
                 if(hash != state->active_file.hash)
                 {
-                    message.type = Net_Message_Data_Req;
-                    net_send_message(state->net_ctx, 0, message);
+                    send_request(state->net_ctx, 0, Net_Message_Data_Req);
                 }
             } break;
             case Net_Message_Data_Res:
@@ -423,9 +445,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         state->io_update_timeout = 0;
         // NOTE(dgl): Currently there is only one server on index 0. If we have more
         // we maybe should create something like net_send_header to all connections.
-        Net_Message message = {};
-        message.type = Net_Message_Hash_Req;
-        net_send_message(state->net_ctx, 0, message);
+         send_request(state->net_ctx, 0, Net_Message_Hash_Req);
     }
 
     if(do_render)

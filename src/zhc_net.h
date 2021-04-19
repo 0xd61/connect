@@ -43,6 +43,7 @@ struct Connection_List
     int32 max_count;
     int32 index;
 
+    bool32 *no_timeout;
     Zhc_Net_Address *address;
     uint64 *salt;
     Net_Conn_State *state;

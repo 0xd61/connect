@@ -336,6 +336,7 @@ push_connection(Connection_List *conns, Zhc_Net_Address address, uint64 salt)
         conns->state[result] = Net_Conn_State_Connecting;
         conns->address[result] = address;
         conns->salt[result] = salt;
+        conns->no_timeout[result] = true;
     }
     else
     {
@@ -452,6 +453,8 @@ net_init_server(DGL_Mem_Arena *arena)
         Connection_List *conns = result->conns;
         conns->max_count = NET_MAX_CLIENTS;
         usize casted_count = cast(usize)conns->max_count;
+        conns->no_timeout = dgl_mem_arena_push_array(arena, bool32, casted_count);
+        dgl_memset(conns->no_timeout, false, sizeof(*conns->no_timeout)*casted_count);
         conns->address = dgl_mem_arena_push_array(arena, Zhc_Net_Address, casted_count);
         conns->salt = dgl_mem_arena_push_array(arena, uint64, casted_count);
         conns->last_packet_hash = dgl_mem_arena_push_array(arena, uint32, casted_count);
@@ -477,6 +480,8 @@ net_init_client(DGL_Mem_Arena *arena)
         Connection_List *conns = result->conns;
         conns->max_count = 1;
         usize casted_count = cast(usize)conns->max_count;
+        conns->no_timeout = dgl_mem_arena_push_array(arena, bool32, casted_count);
+        dgl_memset(conns->no_timeout, false, sizeof(*conns->no_timeout)*casted_count);
         conns->address = dgl_mem_arena_push_array(arena, Zhc_Net_Address, casted_count);
         conns->salt = dgl_mem_arena_push_array(arena, uint64, casted_count);
         conns->last_packet_hash = dgl_mem_arena_push_array(arena, uint32, casted_count);
@@ -585,6 +590,7 @@ send_chunk_buffer(Net_Context *ctx, Net_Conn_ID index, uint8 *ack_mask, usize ac
             uint32 mask_bit = 1 << (slice_index % 8);
             assert(mask_byte < ack_mask_size, "Invalid ack mask byte");
 
+            // TODO(dgl): this check does not work properly yet.
             if((ack_mask[mask_byte] & mask_bit) == mask_bit)
             {
                 LOG_DEBUG("Slice %u already received by the client. Skipping...", slice_index);
@@ -614,15 +620,34 @@ send_chunk_buffer(Net_Context *ctx, Net_Conn_ID index, uint8 *ack_mask, usize ac
 
 // NOTE(dgl): messy. Needs a refactor @cleanup
 internal Net_Conn_ID
-net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, Net_Message *message)
+net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, real32 frametime_in_ms, Net_Message *message)
 {
+    Connection_List *conns = ctx->conns;
     // NOTE(dgl): index is used for the internal connection index. If we want to return
     // the packet/message we put the index into result. This indicates the client that
     // we received a message. Otherwise the messages are handled internal. We loop and
     // handle all packets until we have a packet which is returned as message to the client.
     Net_Conn_ID result = -1;
     Net_Conn_ID index = -1;
-    Connection_List *conns = ctx->conns;
+
+    // NOTE(dgl): disconnect connections which were not updated in the last x seconds.
+    ctx->message_timeout += frametime_in_ms;
+    if(ctx->message_timeout >= 5000.0f)
+    {
+        LOG_DEBUG("Checking connection timeouts");
+        ctx->message_timeout = 0.0f;
+        for(int32 index = 0; index < conns->max_count; ++index)
+        {
+            if(conns->no_timeout[index] == false)
+            {
+                // NOTE(dgl): We do not have to send a message here. If we hit a timeout, there is something
+                // wrong with this connection and the message will most likely not receive the peer.
+                LOG_DEBUG("Disconnecting index %d", index);
+                conns->state[index] = Net_Conn_State_Disconnected;
+            }
+        }
+        dgl_memset(conns->no_timeout, false, sizeof(*conns->no_timeout)*cast(usize)conns->max_count);
+    }
 
     bool32 chunk_buffer_updated = false;
     Zhc_Net_Address address = {};
@@ -657,7 +682,9 @@ net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, Net_Message *message)
         // because I don't really like mixing those.
         // TODO(dgl): the disconnect/denied state is not really defined. Must we send a disconnect packet
         // on each denied packet, to ensure a connection is reset if it has a connection state?
-        index = get_connection(ctx->conns, address);
+        index = get_connection(conns, address);
+        if(index >= 0) { conns->no_timeout[index] = true; }
+
         if(packet.type > _Packet_Type_Connected)
         {
             if(index >= 0 &&
@@ -741,6 +768,16 @@ net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, Net_Message *message)
             else
             {
                 LOG_DEBUG("Invalid packet.");
+                // TODO(dgl): I think the easiest way would be for now to rely on
+                // connection timeouts. But we need a proper solution for this.
+//                 if(index >= 0)
+//                 {
+//                     Net_Message message = {};
+//                     message.type = Net_Message_Disconnect;
+//                     net_send_message(ctx, index, message);
+//                     LOG_DEBUG("Send disconnect message");
+//                     conns->state[index] = Net_Conn_State_Disconnected;
+//                 }
             }
         }
         else
@@ -788,6 +825,7 @@ net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, Net_Message *message)
                 if(conns->state[index] > Net_Conn_State_Disconnected)
                 {
                     // NOTE(dgl): if the connection is already connected, we simply ignore the packet.
+                    // this also makes sure only not established connections can receive a denied packet.
                     if(conns->state[index] == Net_Conn_State_Connected) { continue; }
 
                     switch(packet.type) {
