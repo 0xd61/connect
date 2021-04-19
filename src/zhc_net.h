@@ -23,6 +23,7 @@ struct Bitstream
 
 #define NET_MTU_SIZE 1200
 #define NET_MAX_CLIENTS 128
+#define NET_CONN_TIMEOUT 10000.0f
 typedef int32 Net_Conn_ID;
 
 enum Net_Conn_State

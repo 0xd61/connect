@@ -478,6 +478,10 @@ net_init_client(DGL_Mem_Arena *arena)
     result->conns = dgl_mem_arena_push_struct(arena, Connection_List);
     {
         Connection_List *conns = result->conns;
+        // NOTE(dgl): if we allow more than one connections here, we need a way to only
+        // use the fastest connection or ignore already received packets. This is currently
+        // not needed. We maybe develop something like this just for educational reasons in the
+        // future.
         conns->max_count = 1;
         usize casted_count = cast(usize)conns->max_count;
         conns->no_timeout = dgl_mem_arena_push_array(arena, bool32, casted_count);
@@ -632,7 +636,7 @@ net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, real32 frametime_in_ms,
 
     // NOTE(dgl): disconnect connections which were not updated in the last x seconds.
     ctx->message_timeout += frametime_in_ms;
-    if(ctx->message_timeout >= 5000.0f)
+    if(ctx->message_timeout >= NET_CONN_TIMEOUT)
     {
         LOG_DEBUG("Checking connection timeouts");
         ctx->message_timeout = 0.0f;
@@ -665,7 +669,6 @@ net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, real32 frametime_in_ms,
         usize packet_header_size = serialize_packet(&reader, &packet);
         memory_offset = packet_header_size;
 
-        LOG_DEBUG("Memory size: %llu, offset: %llu", memory_size, memory_offset);
         assert(memory_size >= memory_offset, "Packet memory offset cannot be bigger than the memory size");
         uint8 *payload = memory + memory_offset;
         usize payload_size = memory_size - memory_offset;
@@ -991,4 +994,16 @@ net_send_message(Net_Context *ctx, Net_Conn_ID index, Net_Message message)
     }
 }
 
+internal void
+net_multicast_message(Net_Context *ctx, Net_Message message)
+{
+    Connection_List *conns = ctx->conns;
+    for(int32 index = 0; index < conns->max_count; ++index)
+    {
+        if(conns->state[index] == Net_Conn_State_Connected)
+        {
+            net_send_message(ctx, index, message);
+        }
+    }
+}
 

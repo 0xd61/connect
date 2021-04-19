@@ -71,33 +71,55 @@
 #endif
 
 internal void
-send_request(Net_Context *ctx, Net_Conn_ID id, Net_Message_Type type)
+multicast_request(Net_Context *ctx, Net_Message_Type type)
 {
     Net_Message message = {};
     message.type = type;
-    net_send_message(ctx, id, message);
+    net_multicast_message(ctx, message);
 }
 
 internal void
 send_filehash(Net_Context *ctx, Net_Conn_ID id, File *file)
 {
-    Net_Message message = {};
-    message.type = Net_Message_Hash_Res;
-    message.payload = cast(uint8 *)&file->hash;
-    message.payload_size = sizeof(file->hash);
-    LOG_DEBUG("Sending hash %u", file->hash);
-    net_send_message(ctx, id, message);
+    // TODO(dgl): proper file is valid check
+    if(file->data)
+    {
+        Net_Message message = {};
+        message.type = Net_Message_Hash_Res;
+        message.payload = cast(uint8 *)&file->hash;
+        message.payload_size = sizeof(file->hash);
+        LOG_DEBUG("Sending hash %u", file->hash);
+        net_send_message(ctx, id, message);
+    }
 }
 
 internal void
 send_file(Net_Context *ctx, Net_Conn_ID id, File *file)
 {
-    Net_Message message = {};
-    message.type = Net_Message_Data_Res;
-    message.payload = file->data;
-    message.payload_size = file->info->size;
-    LOG_DEBUG("Sending %d bytes of data with hash %u", message.payload_size, file->hash);
-    net_send_message(ctx, id, message);
+    if(file->data)
+    {
+        Net_Message message = {};
+        message.type = Net_Message_Data_Res;
+        message.payload = file->data;
+        message.payload_size = file->info->size;
+        LOG_DEBUG("Sending %d bytes of data with hash %u", message.payload_size, file->hash);
+        net_send_message(ctx, id, message);
+    }
+}
+
+internal void
+multicast_file(Net_Context *ctx, File *file)
+{
+    LOG_DEBUG("Multicast file %p", file->data);
+    if(file->data)
+    {
+        Net_Message message = {};
+        message.type = Net_Message_Data_Res;
+        message.payload = file->data;
+        message.payload_size = file->info->size;
+        LOG_DEBUG("Multicasting %d bytes of data with hash %u", message.payload_size, file->hash);
+        net_multicast_message(ctx, message);
+    }
 }
 
 internal bool32
@@ -264,6 +286,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
             {
                 state->active_file = read_active_file(&state->io_arena, state->files, info);
                 do_render = true;
+                multicast_file(state->net_ctx, &state->active_file);
             }
         }
     }
@@ -274,6 +297,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     {
         state->active_file = read_active_file(&state->io_arena, state->files, info);
         do_render = true;
+        multicast_file(state->net_ctx, &state->active_file);
     }
 
     if(state->net_ctx->socket.handle.no_error == false)
@@ -407,7 +431,8 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
                 LOG_DEBUG("Received hash %u, active_file hash %u", hash, state->active_file.hash);
                 if(hash != state->active_file.hash)
                 {
-                    send_request(state->net_ctx, 0, Net_Message_Data_Req);
+                    // NOTE(dgl): we can send a multicast here, because the client only has one connection.
+                    multicast_request(state->net_ctx, Net_Message_Data_Req);
                 }
             } break;
             case Net_Message_Data_Res:
@@ -437,15 +462,12 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     }
     net_send_pending_packet_buffers(state->net_ctx);
 
-    // TODO(dgl): @cleanup We do need a proper way to send something to the server
-    // I also do not like the way we send connection messages in the net_recv_header function.
     state->io_update_timeout += input->last_frame_in_ms;
-    if(state->io_update_timeout > 1000.0f)
+    if(state->io_update_timeout > 5000.0f)
     {
         state->io_update_timeout = 0;
-        // NOTE(dgl): Currently there is only one server on index 0. If we have more
-        // we maybe should create something like net_send_header to all connections.
-         send_request(state->net_ctx, 0, Net_Message_Hash_Req);
+        // NOTE(dgl): we can send a multicast here, because the client only has one connection.
+        multicast_request(state->net_ctx, Net_Message_Hash_Req);
     }
 
     if(do_render)
