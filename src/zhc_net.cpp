@@ -436,7 +436,7 @@ send_discovery_packet(Net_Context *ctx)
     usize count = serialize_packet(&writer, &packet);
 
     // TODO(dgl): should we use a subnet broadcast?
-    Zhc_Net_Address address = { .host=0xFFFFFFFF, .port=ZHC_SERVER_PORT };
+    Zhc_Net_Address address = parse_address("192.168.101.255", ZHC_SERVER_PORT);
 
     platform.send_data(&ctx->socket, &address, buffer, count);
     LOG_DEBUG("Sending discovery packet");
@@ -646,7 +646,6 @@ net_recv_message(DGL_Mem_Arena *arena, Net_Context *ctx, real32 frametime_in_ms,
             {
                 // NOTE(dgl): We do not have to send a message here. If we hit a timeout, there is something
                 // wrong with this connection and the message will most likely not receive the peer.
-                LOG_DEBUG("Disconnecting index %d", index);
                 conns->state[index] = Net_Conn_State_Disconnected;
             }
         }

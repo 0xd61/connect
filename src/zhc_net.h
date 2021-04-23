@@ -46,7 +46,7 @@ struct Connection_List
 
     bool32 *no_timeout;
     Zhc_Net_Address *address;
-    uint64 *salt;
+    uint64 *salt; /* TODO(dgl): replace with a crypto signature */
     Net_Conn_State *state;
     uint32 *last_packet_hash;
     Packet_Buffer *packet_buffer; /* to be able to resend packages. */

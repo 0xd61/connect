@@ -8,7 +8,6 @@
     - Crash on android landscape
     - if filesize too large, we get a segfault (probably an isseue with sending an not loaded file!?)
     - Better packet buffer strategy to be able to resend if necessary
-    - Handle connection timeouts
     - Packet throttle for large chunks to not flood the bandwidth
 */
 

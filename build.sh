@@ -51,7 +51,11 @@ if [ "$OS_NAME" == "GNU/Linux" ] || \
     pushd $curDir/$LIBSODIUMVERSION > /dev/null
         if [ ! -f $buildDir/linux/sodium/libsodium.a ]; then
             echo "Compiling libsodium"
-            ./configure --prefix=$buildDir/linux --includedir=$srcDir/lib --libdir=$buildDir/linux/sodium --enable-shared=no --enable-static=yes
+            ./configure \
+                --enable-minimal \
+                --prefix=$buildDir/linux --includedir=$srcDir/lib --libdir=$buildDir/linux/sodium \
+                --enable-shared=no --enable-static=yes || exit 1
+
             make && make check
             make install
         fi
@@ -89,6 +93,82 @@ elif [ "$OS_NAME" == "Android" ] || \
 
     [ -d $curDir/$SDLVERSION ] || curl https://www.libsdl.org/release/$SDLVERSION.tar.gz | tar -C $curDir -xzf -
     [ -d $curDir/$SDLNETVERSION ] || curl https://libsdl.org/projects/SDL_net/release/$SDLNETVERSION.tar.gz | tar -C $curDir -xzf -
+
+    # NOTE(dgl): setup libsodium for android
+    mkdir -p $ANDROID_PATH/app/jniLibs
+    [ -d "$curDir/$LIBSODIUMVERSION" ] || curl https://download.libsodium.org/libsodium/releases/$LIBSODIUMVERSION.tar.gz | tar -C $curDir -xzf -
+    pushd $curDir/$LIBSODIUMVERSION > /dev/null
+        echo "Compiling libsodium"
+        if [ -z "${ANDROID_NDK_HOME}" ]; then
+            echo "You should probably set ANDROID_NDK_HOME to the directory containing"
+            echo "the Android NDK"
+            popd > /dev/null
+            popd > /dev/null
+            exit 1
+        fi
+
+        TOOLCHAIN_DIR=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+
+        export CC=$TOOLCHAIN_DIR/bin/armv7a-linux-androideabi21-clang
+        export AR=$TOOLCHAIN_DIR/bin/llvm-ar
+        export LDFLAGS='--specs=nosys.specs'
+        export TARGET="armv7a-linux-androideabi"
+
+        ./configure \
+            --disable-soname-versions \
+            --enable-minimal \
+            --host="$TARGET" \
+            --prefix=$ANDROID_PATH/app/jniLibs --includedir=$srcDir/lib --libdir=$ANDROID_PATH/app/jniLibs/armeabi-v7a/sodium \
+            --with-sysroot="${TOOLCHAIN_DIR}/sysroot" --enable-shared=yes --enable-static=yes || exit 1
+
+        make
+        make install && make clean
+
+        export CC=$TOOLCHAIN_DIR/bin/aarch64-linux-android21-clang
+        export AR=$TOOLCHAIN_DIR/bin/llvm-ar
+        export LDFLAGS='--specs=nosys.specs'
+        export TARGET="aarch64-linux-android"
+
+        ./configure \
+            --disable-soname-versions \
+            --enable-minimal \
+            --host="$TARGET" \
+            --prefix=$ANDROID_PATH/app/jniLibs --includedir=$srcDir/lib --libdir=$ANDROID_PATH/app/jniLibs/arm64-v8a/sodium \
+            --with-sysroot="${TOOLCHAIN_DIR}/sysroot" --enable-shared=yes --enable-static=yes || exit 1
+
+        make
+        make install && make clean
+
+        export CC=$TOOLCHAIN_DIR/bin/i686-linux-android21-clang
+        export AR=$TOOLCHAIN_DIR/bin/llvm-ar
+        export LDFLAGS='--specs=nosys.specs'
+        export TARGET="i686-linux-android"
+
+        ./configure \
+            --disable-soname-versions \
+            --enable-minimal \
+            --host="$TARGET" \
+            --prefix=$ANDROID_PATH/app/jniLibs --includedir=$srcDir/lib --libdir=$ANDROID_PATH/app/jniLibs/x86/sodium \
+            --with-sysroot="${TOOLCHAIN_DIR}/sysroot" --enable-shared=yes --enable-static=yes || exit 1
+
+        make
+        make install && make clean
+
+        export CC=$TOOLCHAIN_DIR/bin/x86_64-linux-android21-clang
+        export AR=$TOOLCHAIN_DIR/bin/llvm-ar
+        export LDFLAGS='--specs=nosys.specs'
+        export TARGET="x86_64-linux-android"
+
+        ./configure \
+            --disable-soname-versions \
+            --enable-minimal \
+            --host="$TARGET" \
+            --prefix=$ANDROID_PATH/app/jniLibs --includedir=$srcDir/lib --libdir=$ANDROID_PATH/app/jniLibs/x86_64/sodium \
+            --with-sysroot="${TOOLCHAIN_DIR}/sysroot" --enable-shared=yes --enable-static=yes || exit 1
+
+        make
+        make install && make clean
+    popd > /dev/null
 
     mkdir -p $ANDROID_PATH/app/jni/SDL
     ln -sfn $curDir/$SDLVERSION/Android.mk $ANDROID_PATH/app/jni/SDL/Android.mk
