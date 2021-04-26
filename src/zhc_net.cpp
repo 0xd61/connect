@@ -436,7 +436,7 @@ send_discovery_packet(Net_Context *ctx)
     usize count = serialize_packet(&writer, &packet);
 
     // TODO(dgl): should we use a subnet broadcast?
-    Zhc_Net_Address address = parse_address("192.168.101.255", ZHC_SERVER_PORT);
+    Zhc_Net_Address address = parse_address("255.255.255.255", ZHC_SERVER_PORT);
 
     platform.send_data(&ctx->socket, &address, buffer, count);
     LOG_DEBUG("Sending discovery packet");
