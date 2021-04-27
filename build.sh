@@ -180,6 +180,7 @@ elif [ "$OS_NAME" == "Android" ] || \
     ln -sfn $srcDir/* $ANDROID_PATH/app/jni/src/
     ln -sfn $curDir/Android.mk $ANDROID_PATH/app/jni/src/Android.mk
     ln -sfn $dataDir/assets $ANDROID_PATH/app/src/main/
+    ln -sfn $curDir/AndroidManifest.xml $ANDROID_PATH/app/src/main/
 
     echo "Created symlinks to sources. Please use android studio for the build"
 else
