@@ -774,7 +774,7 @@ ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
     result->element_state_list.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
     result->element_state_list.memory = dgl_mem_arena_push_array(permanent_arena, Element_State, result->element_state_list.count);
 
-    result->assets = assets_begin_allocate(permanent_arena, megabytes(24));
+    result->assets = assets_begin_allocate(permanent_arena, megabytes(32));
     {
         // NOTE(dgl): initializing fonts
         // TODO(dgl): @here opendir does not find the directories.
