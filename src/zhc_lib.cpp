@@ -70,6 +70,19 @@
 #endif
 
 internal void
+close_files(Zhc_File_Group *files)
+{
+    Zhc_File_Info *info = files->first_file_info;
+    files->first_file_info = 0;
+    files->count = 0;
+    if(info)
+    {
+        platform.close_file(info);
+        info = info->next;
+    }
+}
+
+internal void
 multicast_request(Net_Context *ctx, Net_Message_Type type)
 {
     Net_Message message = {};
@@ -158,29 +171,41 @@ get_file_info(Zhc_File_Group *group, int32 index)
     return(result);
 }
 
+// NOTE(dgl): By having the old file parameter, we check if the file currently loaded
+// is the same as the requested one. If they are the same we do not load this file.
 internal File
-read_active_file(DGL_Mem_Arena *arena, Zhc_File_Group *group, Zhc_File_Info *info)
+read_file(DGL_Mem_Arena *arena, Zhc_File_Group *group, File *old_file, int file_id)
 {
     File result = {};
 
     if(group)
     {
-        if(info->size < ZHC_MAX_FILESIZE)
+        assert(old_file, "Current file cannot be NULL");
+        // NOTE(dgl): update active file if requested
+        Zhc_File_Info *info = get_file_info(group, file_id);
+        if(info && info != old_file->info)
         {
-            result.info = info;
-            result.data = dgl_mem_arena_push_array(arena, uint8, result.info->size);
+            if(info->size < ZHC_MAX_FILESIZE)
+            {
+                result.info = info;
+                result.data = dgl_mem_arena_push_array(arena, uint8, result.info->size);
 
-            LOG_DEBUG("Loading file %s", result.info->filename);
-            platform.read_entire_file(&result.info->handle, result.data, result.info->size);
-            assert(result.info->handle.no_error, "Failed loading the file");
+                LOG_DEBUG("Loading file %s", result.info->filename);
+                platform.read_entire_file(&result.info->handle, result.data, result.info->size);
+                assert(result.info->handle.no_error, "Failed loading the file");
 
-            result.hash = HASH_OFFSET_BASIS;
-            hash(&result.hash, result.data, result.info->size);
+                result.hash = HASH_OFFSET_BASIS;
+                hash(&result.hash, result.data, result.info->size);
+            }
+            else
+            {
+                // TODO(dgl): create popup error window.
+                LOG("Could not load file %s. Filesize (%zu) is bigger than ZHC_MAX_FILESIZE (%zu).", info->filename, info->size, ZHC_MAX_FILESIZE);
+            }
         }
         else
         {
-            // TODO(dgl): create popup error window.
-            LOG("Could not load file %s. Filesize (%zu) is bigger than ZHC_MAX_FILESIZE (%zu).", info->filename, info->size, ZHC_MAX_FILESIZE);
+            result = *old_file;
         }
     }
     return(result);
@@ -216,18 +241,8 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         if(platform.get_user_data_base_path(&temp_builder))
         {
             char *temp_target = dgl_string_c_style(&temp_builder);
-            Zhc_File_Group *group = platform.get_directory_filenames(&state->io_arena, temp_target);
-
-            if(group)
-            {
-                state->files = group;
-
-                Zhc_File_Info *info = get_file_info(group, 0);
-                if(info)
-                {
-                    state->active_file = read_active_file(&state->io_arena, group, info);
-                }
-            }
+            state->files = platform.get_directory_filenames(&state->io_arena, temp_target);
+            state->active_file = read_file(&state->io_arena, state->files, &state->active_file, state->desired_file_id);
         }
 
         // NOTE(dgl): clear the input for the first frame because
@@ -257,51 +272,38 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         state->force_render = false;
     }
 
-    // NOTE(dgl): Reload the directory/file info and file every 10 seconds.
+    if(state->net_ctx->socket.handle.no_error == false)
+    {
+        net_open_socket(state->net_ctx);
+    }
+
+    // NOTE(dgl): Reload the directory (file infos) every 10 seconds.
+    // We clear the whole IO arena for simplicity reasons. This means the
+    // active file must be reloaded and will be sent via multicast to
+    // all the clients every 10 seconds. @performance
     state->io_update_timeout += input->last_frame_in_ms;
     if(state->io_update_timeout > 10000.0f && state->files->count > 0)
     {
-        // NOTE(dgl): copy current infos to have them available after
-        // puring the io arena. // TODO(dgl): Is there a better way?
+        state->io_update_timeout = 0.0f;
+
         DGL_String_Builder tmp_builder = dgl_string_builder_init(&state->transient_arena, 128);
         dgl_string_append(&tmp_builder, "%s", state->files->dirpath);
         char *tmp_dir_path = dgl_string_c_style(&tmp_builder);
 
-        // NOTE(dgl): resetting pointer to make sure, we do not point to something invalid
+        close_files(state->files);
         state->active_file = {};
-        state->files = 0;
         dgl_mem_arena_free_all(&state->io_arena);
 
-        state->io_update_timeout = 0.0f;
-
-        Zhc_File_Group *group = platform.get_directory_filenames(&state->io_arena, tmp_dir_path);
-        if(group)
-        {
-            state->files = group;
-            Zhc_File_Info *info = get_file_info(state->files, state->desired_file_id);
-            // NOTE(dgl): we resetted the file earlier. Therefore we do not need to reset if
-            // the file does not exist anymore.
-            if(info)
-            {
-                state->active_file = read_active_file(&state->io_arena, state->files, info);
-                do_render = true;
-                multicast_file(state->net_ctx, &state->active_file);
-            }
-        }
+        state->files = platform.get_directory_filenames(&state->io_arena, tmp_dir_path);
     }
 
-    // NOTE(dgl): update active file if requested
-    Zhc_File_Info *info = get_file_info(state->files, state->desired_file_id);
-    if(info && info != state->active_file.info)
+    // NOTE(dgl): Update the active file (does nothing if the file is already loaded).
+    uint32 old_hash = state->active_file.hash;
+    state->active_file = read_file(&state->io_arena, state->files, &state->active_file, state->desired_file_id);
+    if(state->active_file.hash != old_hash)
     {
-        state->active_file = read_active_file(&state->io_arena, state->files, info);
-        do_render = true;
         multicast_file(state->net_ctx, &state->active_file);
-    }
-
-    if(state->net_ctx->socket.handle.no_error == false)
-    {
-        net_open_socket(state->net_ctx);
+        do_render = true;
     }
 
     Net_Message message = {};

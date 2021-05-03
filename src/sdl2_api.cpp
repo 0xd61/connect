@@ -253,8 +253,6 @@ ZHC_GET_DIRECTORY_FILENAMES(get_directory_filenames)
 {
     Zhc_File_Group *result = 0;
 
-    // TODO(dgl): get android assets path
-
     DIR *dir = opendir(path);
     if(dir)
     {
@@ -309,6 +307,21 @@ ZHC_GET_DIRECTORY_FILENAMES(get_directory_filenames)
     return(result);
 }
 #endif // __ANDROID__
+
+ZHC_CLOSE_FILE(sdl_close_file)
+{
+    Zhc_File_Handle *handle = &info->handle;
+
+    if(handle->platform)
+    {
+        SDL_RWops *io = cast(SDL_RWops *)info->handle.platform;
+        int success = SDL_RWclose(io);
+        if(success < 0)
+        {
+            LOG("Failed closing file: %s with error: %d, %s", info->filename, errno, strerror(errno));
+        }
+    }
+}
 
 ZHC_GET_DATA_BASE_PATH(sdl_internal_storage_path)
 {

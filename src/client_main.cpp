@@ -93,6 +93,7 @@ int main(int argc, char *argv[])
         memory.api.get_directory_filenames = get_directory_filenames;
 #endif
         memory.api.read_entire_file = sdl_read_entire_file;
+        memory.api.close_file = sdl_close_file;
         memory.api.file_size = sdl_file_size;
         memory.api.get_data_base_path = sdl_internal_storage_path;
         memory.api.get_user_data_base_path = sdl_external_storage_path;

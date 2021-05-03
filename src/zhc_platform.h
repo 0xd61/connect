@@ -209,7 +209,7 @@ struct Zhc_File_Group
     DGL_Mem_Arena *arena;
     // TODO(dgl): not needed. Will always be stored somewhere else.
     // and with the new file handles, we do not neet it to read the
-    // file.
+    // file. However we currently use it to reload the file group
     char *dirpath;
 };
 
@@ -239,9 +239,10 @@ struct Zhc_Net_Socket
 // NOTE(dgl): Global api. Use separate api file later...
 
 // TODO(dgl): ZHC_OPEN_FILE
-// TODO(dgl): ZHC_CLOSE_FILE
 #define ZHC_GET_DIRECTORY_FILENAMES(name) Zhc_File_Group * name(DGL_Mem_Arena *arena, char *path)
 typedef ZHC_GET_DIRECTORY_FILENAMES(Zhc_Get_Directory_Filenames);
+#define ZHC_CLOSE_FILE(name) void name(Zhc_File_Info *info)
+typedef ZHC_CLOSE_FILE(Zhc_Close_File);
 #define ZHC_FILE_SIZE(name) usize name(Zhc_File_Handle *handle)
 typedef ZHC_FILE_SIZE(Zhc_File_Size);
 #define ZHC_READ_ENTIRE_FILE(name) void name(Zhc_File_Handle *handle, uint8 *buffer, usize buffer_size)
@@ -265,6 +266,7 @@ typedef ZHC_SEND_DATA(Zhc_Send_Data);
 struct Zhc_Platform_Api
 {
     Zhc_Get_Directory_Filenames *get_directory_filenames;
+    Zhc_Close_File *close_file;
     Zhc_File_Size *file_size;
     Zhc_Read_Entire_File *read_entire_file;
     Zhc_Get_User_Data_Base_Path *get_user_data_base_path;
