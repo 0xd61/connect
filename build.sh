@@ -58,20 +58,24 @@ if [ "$OS_NAME" == "GNU/Linux" ] || \
 
             make && make check
             make install
+            make clean
         fi
     popd > /dev/null
 
-     echo "Building tests"
-#     clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_sdl2_api_x64 $srcDir/sdl2_api_test.cpp \
-#     `sdl2-config --static-libs` -pg
-     clang++ $CommonCompilerFlags $CommonDefines -o linux/test_zhc_net_x64 $srcDir/zhc_net_test.cpp \
-     `sdl2-config --static-libs` -pg \
-     -L linux/sodium $CommonLinkerFlags
-#     clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_zhc_asset_x64 $srcDir/zhc_asset_test.cpp \
-#     `sdl2-config --static-libs` -pg
-#     echo "Testing:"
+    echo "Building tests"
+    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_sdl2_api_x64 $srcDir/sdl2_api_test.cpp \
+    `sdl2-config --static-libs` -pg \
+    -L linux/sodium $CommonLinkerFlags
+    clang++ $CommonCompilerFlags $CommonDefines -o linux/test_zhc_net_x64 $srcDir/zhc_net_test.cpp \
+    `sdl2-config --static-libs` -pg \
+    -L linux/sodium $CommonLinkerFlags
+    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_zhc_asset_x64 $srcDir/zhc_asset_test.cpp \
+    `sdl2-config --static-libs` -pg \
+    -L linux/sodium $CommonLinkerFlags
+
+    echo "Testing:"
     ./linux/test_sdl2_api_x64
-     ./linux/test_zhc_net_x64
+    ./linux/test_zhc_net_x64
     ./linux/test_zhc_asset_x64
 
     # PIC = Position Independent Code
