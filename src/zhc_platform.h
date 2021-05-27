@@ -56,7 +56,7 @@ struct V4
 };
 
 inline V4
-rect(int32 x, int32 y, int32 w, int32 h)
+v4(int32 x, int32 y, int32 w, int32 h)
 {
     V4 result = {};
     result.x = x;
@@ -68,7 +68,7 @@ rect(int32 x, int32 y, int32 w, int32 h)
 }
 
 inline V4
-color(real32 r, real32 g, real32 b, real32 a)
+v4(real32 r, real32 g, real32 b, real32 a)
 {
     V4 result = {};
     result.r = r;
@@ -116,10 +116,16 @@ struct Zhc_Input
     bool32 has_window_event;
     real32 last_frame_in_ms;
 
+    V2 window_dim;
+
     V2 pos;
     V2 last_pos;
 
     V2 scroll_delta;
+
+    // NOTE(dgl): if this flag is set, the element must not be hot
+    // before being active. This makes the touch interaction more snappy.
+    bool32 force_active_state;
 
     // NOTE(dgl): only modifier key. We get the text from SDL2.
     int32 key_down;
@@ -149,6 +155,18 @@ zhc_input_mousebutton(Zhc_Input *input, Zhc_Mouse_Button button, bool32 down)
 }
 
 inline void
+zhc_input_touch(Zhc_Input *input, Zhc_Mouse_Button button, bool32 down)
+{
+    // TODO(dgl): The touch event is not really snappy because we need two frames
+    // to recognize it. The first frame sets the element to hot and only then we
+    // we are able to set the element active in the second frame.
+    // However we definately need two frames to determine if the element is on top.
+    // We could preserve the touch input for one more frame, if it happens.
+    if(down) { input->mouse_down |= button; }
+    else { input->mouse_down &= ~button; }
+}
+
+inline void
 zhc_input_mousemove(Zhc_Input *input, V2 pos)
 {
     input->pos = pos;
@@ -171,6 +189,13 @@ zhc_input_text(Zhc_Input *input, char *text)
     char *dest = input->text + len;
     dgl_memcpy(dest, text, size);
     dest[size] = '\0';
+}
+
+inline void
+zhc_input_window(Zhc_Input *input, int32 width, int32 height)
+{
+    input->window_dim.w = width;
+    input->window_dim.h = height;
 }
 
 inline void

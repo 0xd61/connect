@@ -28,8 +28,8 @@ default_theme_xs()
     result.font_size = 26;
     result.icon_size = 48;
     result.menu_size = { .w=em(result, 10.0f), .h=em(result, 4.0f)};
-    result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
-    result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
+    result.primary_color = v4(0.1f, 0.1f, 0.1f, 1.0f);
+    result.bg_color = v4(1.0f, 1.0f, 1.0f, 1.0f);
 
     return(result);
 }
@@ -41,8 +41,8 @@ default_theme_sm()
     result.font_size = 32;
     result.icon_size = 64;
     result.menu_size = { .w=em(result, 10.0f), .h=em(result, 3.5f)};
-    result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
-    result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
+    result.primary_color = v4(0.1f, 0.1f, 0.1f, 1.0f);
+    result.bg_color = v4(1.0f, 1.0f, 1.0f, 1.0f);
 
     return(result);
 }
@@ -54,8 +54,8 @@ default_theme_md()
     result.font_size = 46;
     result.icon_size = 64;
     result.menu_size = { .w=em(result, 10.0f), .h=em(result, 4.0f)};
-    result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
-    result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
+    result.primary_color = v4(0.1f, 0.1f, 0.1f, 1.0f);
+    result.bg_color = v4(1.0f, 1.0f, 1.0f, 1.0f);
 
     return(result);
 }
@@ -67,8 +67,8 @@ default_theme_lg()
     result.font_size = 52;
     result.icon_size = 96;
     result.menu_size = { .w=em(result, 11.0f), .h=em(result, 4.0f)};
-    result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
-    result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
+    result.primary_color = v4(0.1f, 0.1f, 0.1f, 1.0f);
+    result.bg_color = v4(1.0f, 1.0f, 1.0f, 1.0f);
 
     return(result);
 }
@@ -80,8 +80,8 @@ default_theme_xl()
     result.font_size = 60;
     result.icon_size = 96;
     result.menu_size = { .w=em(result, 10.0f), .h=em(result, 5.0f)};
-    result.primary_color = color(0.1f, 0.1f, 0.1f, 1.0f);
-    result.bg_color = color(1.0f, 1.0f, 1.0f, 1.0f);
+    result.primary_color = v4(0.1f, 0.1f, 0.1f, 1.0f);
+    result.bg_color = v4(1.0f, 1.0f, 1.0f, 1.0f);
 
     return(result);
 }
@@ -114,7 +114,7 @@ default_button_theme(Imui_Context *ctx)
     result.icon_size = default_theme.icon_size;
     result.hover_color = default_theme.primary_color;
     result.hover_color.a = 0.1f;
-    result.bg_color = color(default_theme.bg_color.r, default_theme.bg_color.g, default_theme.bg_color.b, 0.3f);
+    result.bg_color = v4(default_theme.bg_color.r, default_theme.bg_color.g, default_theme.bg_color.b, 0.3f);
     result.bg_color.a = 0.3f;
 
     if(ctx->is_dark)
@@ -137,10 +137,10 @@ maybe_update_screen_size(Imui_Context *ctx)
 {
     bool32 result = false;
     Screen_Size screen = Screen_Uninitialized;
-    if(ctx->window.w >= Screen_Size_XL) { screen = Screen_Size_XL; }
-    else if(ctx->window.w >= Screen_Size_LG) { screen = Screen_Size_LG; }
-    else if(ctx->window.w >= Screen_Size_MD) { screen = Screen_Size_MD; }
-    else if(ctx->window.w >= Screen_Size_SM) { screen = Screen_Size_SM; }
+    if(ctx->input->window_dim.w >= Screen_Size_XL) { screen = Screen_Size_XL; }
+    else if(ctx->input->window_dim.w >= Screen_Size_LG) { screen = Screen_Size_LG; }
+    else if(ctx->input->window_dim.w >= Screen_Size_MD) { screen = Screen_Size_MD; }
+    else if(ctx->input->window_dim.w >= Screen_Size_SM) { screen = Screen_Size_SM; }
     else { screen = Screen_Size_XS; }
 
     if(screen != ctx->screen)
@@ -169,6 +169,36 @@ get_id(Imui_Context *ctx, void *data, usize data_count)
     hash(&result, data, data_count);
 
     return(result);
+}
+
+internal void
+push_text_render_command(Render_Command_Buffer *buffer, Font *font, uint32 codepoint, V2 pos, V4 color)
+{
+    Render_Command_Font *cmd = render_command_alloc(buffer, Render_Command_Type_Font, Render_Command_Font);
+    cmd->pos = pos;
+    cmd->color = color;
+    cmd->font = font->font_asset;
+    cmd->bitmap = font->bitmap;
+    cmd->size = font->size;
+    cmd->codepoint = codepoint;
+}
+
+internal void
+push_image_render_command(Render_Command_Buffer *buffer, Asset_ID image, V2 pos, V4 rect, V4 color)
+{
+    Render_Command_Image *cmd = render_command_alloc(buffer, Render_Command_Type_Image, Render_Command_Image);
+    cmd->pos = pos;
+    cmd->rect = rect;
+    cmd->color = color;
+    cmd->image = image;
+}
+
+internal void
+push_rect_render_command(Render_Command_Buffer *buffer, V4 rect, V4 color)
+{
+    Render_Command_Rect *cmd = render_command_alloc(buffer, Render_Command_Type_Rect_Filled, Render_Command_Rect);
+    cmd->rect = rect;
+    cmd->color = color;
 }
 
 internal bool32
@@ -212,7 +242,7 @@ intersect_rect(V4 a, V4 b)
     if (x1 < x0) x1 = x0;
     if (y1 < y0) y1 = y0;
 
-    result = rect(x0, y0, x1 - x0, y1 - y0);
+    result = v4(x0, y0, x1 - x0, y1 - y0);
     return(result);
 }
 
@@ -378,22 +408,45 @@ utf8_to_codepoint(char *c, uint32 *dest)
     return(byte_count);
 }
 
-internal inline stbtt_bakedchar
-get_font_glyph(Loaded_Font *font, uint32 codepoint)
+internal void
+recalculate_font_metrics(Zhc_Assets *assets, Font *font, int32 font_size)
 {
-    stbtt_bakedchar result = {};
-    if(codepoint >= font->glyph_count)
-    {
-        LOG_DEBUG("Glyph cannot be drawn. We currently support only %d glyphs", font->glyph_count);
-        codepoint = 0;
-    }
+    Loaded_Font *font_asset = assets_get_font(assets, font->font_asset);
+    // Get font metrics
+    int32 ascent, descent, linegap;
+    stbtt_GetFontVMetrics(&font_asset->stbfont, &ascent, &descent, &linegap);
 
-    result = font->glyphs[codepoint];
+    real32 scale = stbtt_ScaleForPixelHeight(&font_asset->stbfont, cast(real32)font_size);
+    // NOTE(dgl): linegap is defined by the font. However it was 0 in the fonts I
+    // have tested.
+    font->linegap = 1.4f; //cast(real32)linegap;
+    font->height = cast(real32)(ascent - descent) * scale;
+    font->size = font_size;
+    font->mapping_scale = scale;
+}
+
+// TODO(dgl): @naming
+internal real32
+get_glyph_advance_width(Zhc_Assets *assets, Font *font, uint32 codepoint)
+{
+    real32 result = 0;
+    assert(font->mapping_scale > 0, "Font is not initialized. Font metrics must be recalculated");
+
+    Loaded_Font *font_asset = assets_get_font(assets, font->font_asset);
+
+    int32 advance, lsb;
+    // NOTE(dgl): necessary? It's unlikely a codepoint would be this big. An error value however could and we would catch
+    // it here.
+    assert(codepoint <= 0x7FFFFFFF, "Codepoint cannot be converted to int32. Too large.");
+    stbtt_GetCodepointHMetrics(&font_asset->stbfont, cast(int32)codepoint, &advance, &lsb);
+
+    result = cast(real32)advance * font->mapping_scale;
+
     return(result);
 }
 
 internal int32
-get_font_width(Loaded_Font *font, char *text, int32 byte_count)
+get_text_width(Zhc_Assets *assets, Font *font, char *text, int32 byte_count)
 {
     char *c = text;
     int32 result = 0;
@@ -401,8 +454,8 @@ get_font_width(Loaded_Font *font, char *text, int32 byte_count)
     while(*c && (byte_count-- > 0))
     {
         c += utf8_to_codepoint(c, &codepoint);
-        stbtt_bakedchar glyph = get_font_glyph(font, codepoint);
-        result += dgl_round_real32_to_int32(glyph.xadvance);
+        real32 advance = get_glyph_advance_width(assets, font, codepoint);
+        result += dgl_round_real32_to_int32(advance);
     }
 
     return(result);
@@ -448,20 +501,14 @@ ui_icon(Imui_Context *ctx, Icon_Type type, int32 size, V2 pos, V4 color)
     assert(set, "Icon size is not available.");
 
     Icon *icon = set->icons + type;
-    Loaded_Image *img = assets_get_image(ctx->assets, icon->bitmap);
-    ren_draw_bitmap(ctx->buffer, img, icon->box, pos, color);
+    push_image_render_command(ctx->cmd_buffer, icon->bitmap, pos, icon->box, color);
 }
 
 // NOTE(dgl): width and height of the element (to calculate overflow)
+// TODO(dgl): use textarena theme...
 internal V2
 ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text, int32 text_count)
 {
-    Loaded_Image *font_bitmap = assets_get_image(ctx->assets, font->bitmap);
-    Loaded_Font *font_asset = assets_get_font(ctx->assets, font->font_asset);
-
-    assert(font_bitmap, "Initialize font before rendering text");
-    assert(font_asset, "Initialize font before rendering text");
-
     char *c = text;
     uint32 codepoint = 0;
     int32 x = body.x;
@@ -473,7 +520,7 @@ ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text, int32 
         // After drawing we check if the divider was a newline. If it was, we increase
         // y by one line. THe divier characters are all in ACII, hence only 1 byte long.
         int32 word_byte_count = next_word_byte_count(c) + 1;
-        int32 word_width = get_font_width(font_asset, c, word_byte_count);
+        int32 word_width = get_text_width(ctx->assets, font, c, word_byte_count);
 
         if(current_w + word_width > body.w)
         {
@@ -497,13 +544,10 @@ ui_textarea(Imui_Context *ctx, Font *font, V4 body, V4 color, char* text, int32 
                 continue;
             }
 
-            stbtt_bakedchar raw_glyph = get_font_glyph(font_asset, codepoint);
+            V2 pos = {.x=x, .y=y};
+            push_text_render_command(ctx->cmd_buffer, font, codepoint, pos, color);
 
-            V4 glyph = rect(raw_glyph.x0, raw_glyph.y0, raw_glyph.x1 - raw_glyph.x0, raw_glyph.y1 - raw_glyph.y0);
-            V2 pos = v2(x + dgl_round_real32_to_int32(raw_glyph.xoff), y + dgl_round_real32_to_int32(raw_glyph.yoff));
-            ren_draw_bitmap(ctx->buffer, font_bitmap, glyph, pos, color);
-
-            int32 advance = dgl_round_real32_to_int32(raw_glyph.xadvance);
+            int32 advance = dgl_round_real32_to_int32(get_glyph_advance_width(ctx->assets, font, codepoint));
             current_w += advance;
             x += advance;
         }
@@ -521,8 +565,8 @@ button(Imui_Context *ctx, V4 body, Button_Theme theme, Icon_Type type)
     Element_ID id = get_id(ctx, &body, sizeof(body));;
     result = begin_element(ctx, id, body);
 
-    if(id == ctx->hot || id == ctx->active) { ren_draw_rectangle(ctx->buffer, body, theme.hover_color); }
-    else { ren_draw_rectangle(ctx->buffer, body, theme.bg_color); }
+    if(id == ctx->hot || id == ctx->active) { push_rect_render_command(ctx->cmd_buffer, body, theme.hover_color); }
+    else { push_rect_render_command(ctx->cmd_buffer, body, theme.bg_color); }
 
     V2 icon_pos = v2(body.x + (body.w - theme.icon_size) / 2, body.y + (body.h - theme.icon_size) / 2);
 
@@ -530,76 +574,6 @@ button(Imui_Context *ctx, V4 body, Button_Theme theme, Icon_Type type)
 
     end_element(ctx);
     return(result);
-}
-
-// NOTE(dgl): try to resize only fonts which are the last allocation in the
-// arena for easier allocation resizing.
-internal void
-ui_resize_font(Zhc_Assets *assets, Font *font, int32 font_size)
-{
-    assert(font, "Font cannot be null");
-    Loaded_Font *font_asset = assets_get_font(assets, font->font_asset);
-
-    // Get font metrics
-    int32 ascent, descent, linegap;
-    stbtt_GetFontVMetrics(&font_asset->stbfont, &ascent, &descent, &linegap);
-
-    font->size = font_size;
-    real32 scale = stbtt_ScaleForPixelHeight(&font_asset->stbfont, cast(real32)font->size);
-    // NOTE(dgl): linegap is defined by the font. However it was 0 in the fonts I
-    // have tested.
-    font->linegap = 1.4f; //cast(real32)linegap;
-    font->height = cast(real32)(ascent - descent) * scale;
-
-    // NOTE(dgl): loading the font_bitmap, if it exists. Otherwise this pointer is NULL!
-    Loaded_Image *font_bitmap = assets_get_image(assets, font->bitmap);
-    int32 bitmap_width = 128;
-    int32 bitmap_height = 128;
-
-retry:
-    int32 pixel_count = bitmap_width * bitmap_height;
-    if(font_bitmap)
-    {
-        LOG_DEBUG("Unloading bitmap buffer (%dx%d) for resizing", bitmap_width, bitmap_height);
-        assets_unload(assets, font->bitmap);
-    }
-
-    LOG_DEBUG("Loading bitmap buffer %dx%d", bitmap_width, bitmap_height);
-    assets_allocate_image(assets, font->bitmap, bitmap_width, bitmap_height);
-    font_bitmap = assets_get_image(assets, font->bitmap);
-
-    real32 s = stbtt_ScaleForMappingEmToPixels(&font_asset->stbfont, 1) / stbtt_ScaleForPixelHeight(&font_asset->stbfont, 1);
-
-    /* load glyphs */
-    int32 success = stbtt_BakeFontBitmap(font_asset->ttf_buffer, 0, cast(real32)font->size * s,
-                                         cast(uint8 *)font_bitmap->pixels, font_bitmap->width, font_bitmap->height,
-                                         0, font_asset->glyph_count, font_asset->glyphs);
-
-    if(success < 0)
-    {
-        LOG_DEBUG("Could not fit the characters into the bitmap (%dx%d). Retrying...", font_bitmap->width, font_bitmap->height);
-        bitmap_width *= 2;
-        bitmap_height *= 2;
-        goto retry;
-    }
-
-    // map 8bit Bitmap to 32bit
-    for(int32 index = pixel_count - 1;
-        index >= 0;
-        --index)
-    {
-        // NOTE(dgl): we only store the alpha channel.
-        // the others are set on drawing.
-        uint8 alpha = *(cast(uint8 *)font_bitmap->pixels + index);
-        font_bitmap->pixels[index] = (cast(uint32)(alpha << 24) |
-                                             (0xFF << 16) |
-                                             (0xFF << 8) |
-                                             (0xFF << 0));
-    }
-
-    // make tab and newline glyphs invisible
-    font_asset->glyphs[cast(int32)'\t'].x1 = font_asset->glyphs[cast(int32)'\t'].x0;
-    font_asset->glyphs[cast(int32)'\n'].x1 = font_asset->glyphs[cast(int32)'\n'].x0;
 }
 
 internal Zhc_File_Group *
@@ -628,7 +602,7 @@ initialize_icons(Zhc_Assets *assets, Zhc_File_Info *info, int32 size)
         Icon *icon = result.icons + index;
         icon->bitmap = bitmap_id;
         icon->type = cast(Icon_Type)index; // NOTE(dgl): index is here mapped to icon_type
-        icon->box = rect(index * size, 0, size, size);
+        icon->box = v4(index * size, 0, size, size);
     }
 
     return(result);
@@ -638,7 +612,7 @@ void
 ui_draw_menu(Imui_Context *ctx)
 {
     Theme default_theme = get_default_theme(ctx->screen);
-    V4 body = rect(ctx->window.w - default_theme.menu_size.x, 0, default_theme.menu_size.x, default_theme.menu_size.y);
+    V4 body = v4(ctx->input->window_dim.w - default_theme.menu_size.x, 0, default_theme.menu_size.x, default_theme.menu_size.y);
     V4 pad = {.top=20, .bottom=20, .right=20, .left=20};
     V2 button_body = {};
     button_body.w = (body.w - pad.left - 3*pad.right) / 3;
@@ -648,7 +622,7 @@ ui_draw_menu(Imui_Context *ctx)
 
     Button_Theme button_theme = default_button_theme(ctx);
 
-    V4 r = rect(x, y, button_body.w, button_body.h);
+    V4 r = v4(x, y, button_body.w, button_body.h);
     Icon_Type mode_swap = Icon_Type_Dark;
     if(ctx->is_dark) { mode_swap = Icon_Type_Light; }
     if(button(ctx, r, button_theme, mode_swap))
@@ -658,14 +632,14 @@ ui_draw_menu(Imui_Context *ctx)
     x += button_body.w + pad.right;
 
     int32 new_font_size = 0;
-    r = rect(x, y, button_body.w, button_body.h);
+    r = v4(x, y, button_body.w, button_body.h);
     if(button(ctx, r, button_theme, Icon_Type_Decrease_Font))
     {
         new_font_size = ctx->text_font.size - em(ctx, 0.3f);
     }
     x += button_body.w + pad.right;
 
-    r = rect(x, y, button_body.w, button_body.h);
+    r = v4(x, y, button_body.w, button_body.h);
     if(button(ctx, r, button_theme, Icon_Type_Increase_Font))
     {
         new_font_size = ctx->text_font.size + em(ctx, 0.3f);
@@ -676,7 +650,7 @@ ui_draw_menu(Imui_Context *ctx)
     {
         int32 clamped = dgl_clamp(new_font_size, em(ctx, 0.5f), MAX_FONT_SIZE);
         LOG_DEBUG("Resizing font from %d to %d", ctx->text_font.size, clamped);
-        ui_resize_font(ctx->assets, &ctx->text_font, clamped);
+        recalculate_font_metrics(ctx->assets, &ctx->text_font, clamped);
     }
 }
 
@@ -689,7 +663,7 @@ ui_draw_file_controls(Imui_Context *ctx, int32 *file_index)
     int32 button_h = 400;
 
     if(button(ctx,
-              rect(ctx->window.w - button_w, (ctx->window.h - button_h)/2, button_w, button_h),
+              v4(ctx->input->window_dim.w - button_w, (ctx->input->window_dim.h - button_h)/2, button_w, button_h),
               theme,
               Icon_Type_Next) ||
               input_pressed(ctx->input, Zhc_Keyboard_Button_Right) ||
@@ -700,7 +674,7 @@ ui_draw_file_controls(Imui_Context *ctx, int32 *file_index)
     }
 
     if(button(ctx,
-              rect(0, (ctx->window.h - button_h)/2, button_w, button_h),
+              v4(0, (ctx->input->window_dim.h - button_h)/2, button_w, button_h),
               theme,
               Icon_Type_Previous) ||
               input_pressed(ctx->input, Zhc_Keyboard_Button_Left))
@@ -715,7 +689,7 @@ ui_draw_textarea(Imui_Context *ctx, char *text, usize text_count)
     Theme default_theme = get_default_theme(ctx->screen);
 
     V4 pad = {.top=default_theme.icon_size + 20, .bottom=dgl_round_real32_to_int32(ctx->text_font.height) + 100, .right=50, .left=50};
-    V4 body = rect(pad.left, pad.top, ctx->window.w - pad.right, ctx->window.h - pad.bottom);
+    V4 body = v4(pad.left, pad.top, ctx->input->window_dim.w - pad.right, ctx->input->window_dim.h - pad.bottom);
 
     // NOTE(dgl): We use a hash of the data. Then every file has it's own state
     // and the scroll position is saved.
@@ -756,16 +730,31 @@ ui_draw_textarea(Imui_Context *ctx, char *text, usize text_count)
 void
 ui_draw_backplate(Imui_Context *ctx)
 {
-    V4 screen = rect(0, 0, ctx->window.w, ctx->window.h);
+    V4 screen = v4(0, 0, ctx->input->window_dim.w, ctx->input->window_dim.h);
 
     Theme default_theme = get_default_theme(ctx->screen);
     V4 bg_color = default_theme.bg_color;
     if(ctx->is_dark) { bg_color = default_theme.primary_color; }
-    ren_draw_rectangle(ctx->buffer, screen, bg_color);
+    push_rect_render_command(ctx->cmd_buffer, screen, bg_color);
+}
+
+void
+ui_draw_fps_counter(Imui_Context *ctx)
+{
+    Zhc_Input *input = ctx->input;
+    Theme default_theme = get_default_theme(ctx->screen);
+    int32 old_font_size = ctx->system_font.size;
+
+    recalculate_font_metrics(ctx->assets, &ctx->system_font, em(default_theme, 0.4f));
+    V4 fps_body = v4(10, 10, 1000, 1000);
+    char fps_text[16];
+    sprintf(fps_text, "%.02f fps", (1000.0f / input->last_frame_in_ms));
+    ui_textarea(ctx, &ctx->system_font, fps_body, default_theme.primary_color, fps_text, array_count(fps_text));
+    recalculate_font_metrics(ctx->assets, &ctx->system_font, old_font_size);
 }
 
 Imui_Context *
-ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
+ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena, Render_Command_Buffer *cmd_buffer)
 {
     LOG_DEBUG("Permanent arena %p, Transient arena %p", permanent_arena, transient_arena);
     Imui_Context *result = dgl_mem_arena_push_struct(permanent_arena, Imui_Context);
@@ -773,8 +762,9 @@ ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
     result->id_stack.memory = dgl_mem_arena_push_array(permanent_arena, Element_ID, result->id_stack.count);
     result->element_state_list.count = 64; /* NOTE(dgl): Max count of elements. Increase if necessary */
     result->element_state_list.memory = dgl_mem_arena_push_array(permanent_arena, Element_State, result->element_state_list.count);
+    result->cmd_buffer = cmd_buffer;
 
-    result->assets = assets_begin_allocate(permanent_arena, megabytes(32));
+    result->assets = assets_begin_allocate(permanent_arena, ZHC_ASSET_MEMORY_SIZE);
     {
         // NOTE(dgl): initializing fonts
         // TODO(dgl): @here opendir does not find the directories.
@@ -837,12 +827,9 @@ ui_context_init(DGL_Mem_Arena *permanent_arena, DGL_Mem_Arena *transient_arena)
 }
 
 void
-ui_context_update(Imui_Context *ctx, Zhc_Input *input, Zhc_Offscreen_Buffer *buffer)
+ui_context_update(Imui_Context *ctx, Zhc_Input *input)
 {
     ctx->input = input;
-    ctx->buffer = buffer;
-    ctx->window.x = buffer->width;
-    ctx->window.y = buffer->height;
 
     // NOTE(dgl): if the hot element id did not get updated on the last frame, we reset the id.
     if(!ctx->hot_updated) { ctx->hot = 0; }
@@ -852,13 +839,13 @@ ui_context_update(Imui_Context *ctx, Zhc_Input *input, Zhc_Offscreen_Buffer *buf
     if(maybe_update_screen_size(ctx))
     {
         Theme default_theme = get_default_theme(ctx->screen);
-        ui_resize_font(ctx->assets, &ctx->system_font, em(default_theme, 1));
+        recalculate_font_metrics(ctx->assets, &ctx->system_font, em(default_theme, 1));
 
         // NOTE(dgl): only resize the text font if it is not initialized.
         // TODO(dgl): initialize this font size from config
         if(ctx->text_font.size == 0)
         {
-            ui_resize_font(ctx->assets, &ctx->text_font, em(default_theme, 1));
+            recalculate_font_metrics(ctx->assets, &ctx->text_font, em(default_theme, 1));
         }
 
         // NOTE(dgl): unload all assets not needed for this theme. If sizes are still needed,

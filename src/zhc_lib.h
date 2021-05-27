@@ -4,6 +4,7 @@
 #include "zhc_platform.h"
 #include "zhc_utils.h"
 #include "zhc_asset.h"
+#include "zhc_renderer.h"
 #include "zhc_ui.h"
 #include "zhc_net.h"
 
@@ -19,6 +20,9 @@
 // strategy. Currently each bit determines a chunk slice.
 #define ZHC_MAX_FILESIZE megabytes(1)
 
+#define ZHC_ASSET_MEMORY_SIZE megabytes(32)
+#define ZHC_IO_MEMORY_SIZE megabytes(8)
+
 global Zhc_Platform_Api platform;
 
 struct File
@@ -33,6 +37,7 @@ struct Lib_State
     DGL_Mem_Arena permanent_arena;
     DGL_Mem_Arena transient_arena; // NOTE(dgl): cleared on each frame
 
+    Render_Command_Buffer cmd_buffer;
     Imui_Context *ui_ctx;
 
     // TODO(dgl): replace this with assets?

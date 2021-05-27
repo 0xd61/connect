@@ -72,11 +72,15 @@ if [ "$OS_NAME" == "GNU/Linux" ] || \
     clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_zhc_asset_x64 $srcDir/zhc_asset_test.cpp \
     `sdl2-config --static-libs` -pg \
     -L linux/sodium $CommonLinkerFlags
+    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_zhc_renderer_x64 $srcDir/zhc_renderer_test.cpp \
+    `sdl2-config --static-libs` -pg \
+    -L linux/sodium $CommonLinkerFlags
 
     echo "Testing:"
     ./linux/test_sdl2_api_x64
     ./linux/test_zhc_net_x64
     ./linux/test_zhc_asset_x64
+    ./linux/test_zhc_renderer_x64
 
     # PIC = Position Independent Code
     # -lm -> we have to link the math library...

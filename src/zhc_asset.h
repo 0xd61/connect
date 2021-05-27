@@ -15,6 +15,13 @@ enum Asset_Type
     Asset_Type_Image
 };
 
+enum Asset_Tag
+{
+    Asset_Tag_Icon,
+    Asset_Tag_Font_Meta,
+    Asset_Tag_Font_Bitmap
+};
+
 // NOTE(dgl): free memory blocks
 struct Asset_Memory_Block
 {
@@ -28,6 +35,16 @@ struct Loaded_Font
 {
     uint8 *ttf_buffer;
     stbtt_fontinfo stbfont;
+
+    // NOTE(dgl): these are 0 when initialized
+    // because the font is not baked yet. It must be checked
+    // if the font is baked before using it!
+    int32 size;
+    real32 height;
+    real32 linegap;
+    // NOTE(dgl): the depending bitmap is currently tracked in the UI code
+    // because we allocate the assets there. The bitmap id should move here
+    // eventually! @cleanup
 
     int32 glyph_count;
     stbtt_bakedchar *glyphs;
@@ -62,9 +79,14 @@ struct Asset_Memory_Header
     };
 };
 
+// TODO(dgl): It would be great if all assets could have a dependent
+// asset. Not only the files. But then we must restructure our asset
+// allocation system. I think it would be better to have a asset
+// file which describes these relations
 struct Asset
 {
     Asset_ID file_index;
+    Asset_Tag tag;
     Asset_Memory_Header *header;
 };
 

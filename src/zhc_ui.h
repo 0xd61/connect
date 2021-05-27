@@ -65,11 +65,14 @@ struct Icon_Set
 struct Font
 {
     Asset_ID font_asset;
-    Asset_ID bitmap;
+    Asset_ID bitmap; /* TODO(dgl): will be removed, when we describe our assets and dependencies in an asset file @temporary */
 
+    // NOTE(dgl): these metrics should only be set
+    // with the function recalculate_font_metrics
     int32 size; /* size in pixels */
     real32 linegap;
     real32 height;
+    real32 mapping_scale;
 };
 
 struct Element_State
@@ -100,7 +103,7 @@ struct Imui_Context
     Font text_font;
 
     Zhc_Input *input;
-    Zhc_Offscreen_Buffer *buffer;
+    Render_Command_Buffer *cmd_buffer;
 
     Stack(Element_ID) id_stack;
     Stack(Element_State) element_state_list;

@@ -5,10 +5,17 @@
     - Some kind of overflow in stbtt_BakeFontBitmap for (108px size fonts)
     - Render circles
     - Cached rendering
-    - Crash on android landscape
-    - if filesize too large, we get a segfault (probably an isseue with sending an not loaded file!?)
+    - Rerender when switching to landscape (should work now)
+    - Fast light tapping is not recognized (how can I debug this? Clicking in th emulator works totally fine -> Will be easier when we switch to render commands)
     - Better packet buffer strategy to be able to resend if necessary
     - Packet throttle for large chunks to not flood the bandwidth
+    - Image resizing for better size control of assets
+
+
+    - With the new render command feature, assets are freed/changed before we have rendered them (font bitmap -> fontsize change.)
+    - I guess we have to store each font size separately?
+    - We could also push the desired fontsize into the command and bake the bitmap during render.
+    - However we need a baked bitmap during ui creation to get the glyph sizes.
 */
 
 #include "zhc_lib.h"
@@ -138,7 +145,9 @@ internal bool32
 input_updated(Zhc_Input *a, Zhc_Input *b)
 {
     bool32 result = false;
-    result = ((a->pos.x != b->pos.x) ||
+    result = ((a->window_dim.w != b->window_dim.w) ||
+              (a->window_dim.h != b->window_dim.h) ||
+              (a->pos.x != b->pos.x) ||
               (a->pos.y != b->pos.y) ||
               (a->last_pos.x != b->last_pos.x) ||
               (a->last_pos.y != b->last_pos.y) ||
@@ -225,12 +234,12 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         dgl_mem_arena_init(&state->transient_arena, (uint8 *)memory->transient_storage, (DGL_Mem_Index)memory->transient_storage_size);
 
         state->net_ctx = net_init_server(&state->permanent_arena);
-        state->ui_ctx = ui_context_init(&state->permanent_arena, &state->transient_arena);
+        state->ui_ctx = ui_context_init(&state->permanent_arena, &state->transient_arena, &state->cmd_buffer);
 
         // NOTE(dgl): Initialize IO Context
         // The io_arena must be initialized before beginnging the temp arena. Otherwise the allocation
         // is automatically freed on the end of the temp arena.
-        usize io_arena_size = megabytes(8);
+        usize io_arena_size = ZHC_IO_MEMORY_SIZE;
         uint8 *io_arena_base = dgl_mem_arena_push_array(&state->permanent_arena, uint8, io_arena_size);
         dgl_mem_arena_init(&state->io_arena, io_arena_base, io_arena_size);
         state->io_update_timeout = 0.0f;
@@ -271,6 +280,12 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         do_render = state->force_render;
         state->force_render = false;
     }
+
+    dgl_mem_arena_free_all(&state->transient_arena);
+    // NOTE(dgl): we reinit the command buffer on each loop.
+    usize render_buffer_size = kilobytes(512);
+    uint8 *render_buffer_base = dgl_mem_arena_push_array(&state->transient_arena, uint8, render_buffer_size);
+    render_command_buffer_init(&state->cmd_buffer, render_buffer_base, render_buffer_size);
 
     if(state->net_ctx->socket.handle.no_error == false)
     {
@@ -332,7 +347,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     {
         // NOTE(dgl): @@temporary only until we have a command buffer
         Imui_Context *ui_ctx = state->ui_ctx;
-        ui_context_update(ui_ctx, input, buffer);
+        ui_context_update(ui_ctx, input);
 
         ui_draw_backplate(ui_ctx);
 
@@ -350,13 +365,18 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
         ui_draw_menu(ui_ctx);
 
+#if ZHC_INTERNAL
+        ui_draw_fps_counter(ui_ctx);
+#endif
+
         // NOTE(dgl): put this at the end of the frame
         // to know which element is hot if they are overlapping
         // on the next frame
         ui_ctx->top_most_hot = ui_ctx->hot;
+
+        render(ui_ctx->cmd_buffer, ui_ctx->assets, buffer);
     }
 
-    dgl_mem_arena_free_all(&state->transient_arena);
     return(do_render);
 }
 
@@ -374,12 +394,14 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         LOG_DEBUG("Permanent memory: %p (%lld), Lib_State size: %lld, permanent_arena: %p, transient_arena: %p", memory->permanent_storage, memory->permanent_storage_size, sizeof(*state), state->permanent_arena.base, state->transient_arena.base);
 
         state->net_ctx = net_init_client(&state->permanent_arena);
-        state->ui_ctx = ui_context_init(&state->permanent_arena, &state->transient_arena);
+
+        // NOTE(dgl): at this state the cmd_buffer is not initialized.
+        state->ui_ctx = ui_context_init(&state->permanent_arena, &state->transient_arena, &state->cmd_buffer);
 
         // NOTE(dgl): Initialize IO Context
         // The io_arena must be initialized before beginnging the temp arena. Otherwise the allocation
         // is automatically freed on the end of the temp arena.
-        usize io_arena_size = megabytes(8);
+        usize io_arena_size = ZHC_IO_MEMORY_SIZE;
         uint8 *io_arena_base = dgl_mem_arena_push_array(&state->permanent_arena, uint8, io_arena_size);
         dgl_mem_arena_init(&state->io_arena, io_arena_base, io_arena_size);
         state->io_update_timeout = 0.0f;
@@ -415,6 +437,12 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     {
         net_open_socket(state->net_ctx);
     }
+
+    dgl_mem_arena_free_all(&state->transient_arena);
+    // NOTE(dgl): we reinit the command buffer on each loop.
+    usize render_buffer_size = kilobytes(512);
+    uint8 *render_buffer_base = dgl_mem_arena_push_array(&state->transient_arena, uint8, render_buffer_size);
+    render_command_buffer_init(&state->cmd_buffer, render_buffer_base, render_buffer_size);
 
     net_request_server_connection(state->net_ctx);
 
@@ -474,7 +502,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     if(do_render)
     {
         Imui_Context *ui_ctx = state->ui_ctx;
-        ui_context_update(ui_ctx, input, buffer);
+        ui_context_update(ui_ctx, input);
 
         ui_draw_backplate(ui_ctx);
 
@@ -486,10 +514,16 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
 
         ui_draw_menu(ui_ctx);
 
+#if ZHC_INTERNAL
+        ui_draw_fps_counter(ui_ctx);
+#endif
+
         // NOTE(dgl): put this at the end of the frame
         // to know which element is hot if they are overlapping
         // on the next frame
         ui_ctx->top_most_hot = ui_ctx->hot;
+
+        render(ui_ctx->cmd_buffer, ui_ctx->assets, buffer);
     }
 
     dgl_mem_arena_free_all(&state->transient_arena);

@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
     SDL_DisableScreenSaver();
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
-    uint64 target_fps = 30;
+    uint64 target_fps = 60;
     uint64 target_frame_ticks = (SDL_GetPerformanceFrequency() / target_fps);
     real32 target_ms_per_frame = (1.0f / cast(real32)target_fps) * 1000.0f;
 
@@ -205,6 +205,7 @@ int main(int argc, char *argv[])
             back_buffer.memory = surf->pixels;
 
             input.last_frame_in_ms = last_frame_in_ms;
+            zhc_input_window(&input, back_buffer.width, back_buffer.height);
 
             // TODO(dgl): only render if necessary
             // add render cache to only render rects that have changed

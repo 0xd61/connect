@@ -8,6 +8,14 @@ else {
 }
 
 android {
+    signingConfigs {
+        release {
+            storeFile file('/home/danielg/Sync/upload-keystore.jks')
+            storePassword 'ahPH9ieJohW@eep'
+            keyAlias 'upload'
+            keyPassword 'ahPH9ieJohW@eep'
+        }
+    }
     compileSdkVersion 29
     buildToolsVersion "30.0.3"
 
@@ -15,8 +23,8 @@ android {
         applicationId "co.degit.connect"
         minSdkVersion 16
         targetSdkVersion 29
-        versionCode 4
-        versionName "0.2.2"
+        versionCode 5
+        versionName "0.2.3"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
