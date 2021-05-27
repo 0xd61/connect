@@ -184,6 +184,14 @@ int main(int argc, char *argv[])
                         {
                             zhc_input_keybutton(&input, Zhc_Keyboard_Button_Right, down);
                         }
+                        else if(event.key.keysym.sym == SDLK_UP)
+                        {
+                            if(down) { zhc_input_scroll(&input, v2(0, 1)); }
+                        }
+                        else if(event.key.keysym.sym == SDLK_DOWN)
+                        {
+                            if(down) { zhc_input_scroll(&input, v2(0, -1)); }
+                        }
                         else if((event.key.keysym.sym == SDLK_RETURN) ||
                                 (event.key.keysym.sym == SDLK_RETURN2) ||
                                 (event.key.keysym.sym == SDLK_KP_ENTER))

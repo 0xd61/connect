@@ -214,7 +214,6 @@ int main(int argc, char *argv[])
                 */
             }
 
-
             uint64 end_counter = SDL_GetPerformanceCounter();
             uint64 counter_elapsed = end_counter - last_counter;
             last_frame_in_ms = (((1000.0f * (real32)counter_elapsed) / (real32)perf_count_frequency));
