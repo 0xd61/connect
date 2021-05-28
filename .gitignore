@@ -31,6 +31,9 @@
 *.out
 *.app
 
+# Analysis files
+core
+
 /SDL2-*/
 /SDL2_*/
 /build/
