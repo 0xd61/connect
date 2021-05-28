@@ -718,7 +718,7 @@ ui_draw_backplate(Imui_Context *ctx)
     Theme default_theme = get_default_theme(ctx->screen);
     V4 bg_color = default_theme.bg_color;
     if(ctx->is_dark) { bg_color = default_theme.primary_color; }
-    //push_rect_render_command(ctx->cmd_buffer, screen, bg_color);
+    push_rect_render_command(ctx->cmd_buffer, screen, bg_color);
 }
 
 void

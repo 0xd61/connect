@@ -396,6 +396,12 @@ render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets,
 
         cmd = get_next_command(commands, cmd);
     }
+
+#if ZHC_DEBUG
+    // NOTE(dgl): used to visualize rerenders
+    local_persist int32 transparency_index;
+    transparency_index += 10;
+#endif
     ctx->clipping_rect = v4(0,0,screen_buffer->width, screen_buffer->height);
     for(int32 y = 0; y < grid->cell_count_y; ++y)
     {
@@ -450,7 +456,8 @@ render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets,
                 }
 
 #if ZHC_DEBUG
-                draw_rectangle(ctx, screen_buffer, ctx->clipping_rect, v4(1.0f,0.0f,0.0f,0.1f));
+                real32 transp = cast(real32)(transparency_index % 255) / 255.0f;
+                draw_rectangle(ctx, screen_buffer, ctx->clipping_rect, v4(1.0f,0.0f,0.0f, transp));
             }
             draw_rectangle(ctx, screen_buffer, v4(ctx->clipping_rect.x, ctx->clipping_rect.y, ctx->clipping_rect.w, 1), v4(1.0f,0.0f,0.0f,1.0f));
             draw_rectangle(ctx, screen_buffer, v4(ctx->clipping_rect.x, ctx->clipping_rect.y, 1, ctx->clipping_rect.h), v4(1.0f,0.0f,0.0f,1.0f));
