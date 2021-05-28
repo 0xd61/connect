@@ -259,6 +259,8 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         // the application
         zhc_input_reset(input);
 
+        state->render_ctx.grid = renderer_buid_hash_grid(&state->permanent_arena, 20, 11);
+
         state->force_render = true;
         state->is_initialized = true;
     }
@@ -343,6 +345,8 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
     }
     net_send_pending_packet_buffers(state->net_ctx);
 
+
+    do_render = true;
     if(do_render)
     {
         // NOTE(dgl): @@temporary only until we have a command buffer
@@ -374,7 +378,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         // on the next frame
         ui_ctx->top_most_hot = ui_ctx->hot;
 
-        render(ui_ctx->cmd_buffer, ui_ctx->assets, buffer);
+        render(&state->render_ctx, ui_ctx->cmd_buffer, ui_ctx->assets, buffer);
     }
 
     return(do_render);
@@ -410,6 +414,8 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         // sometimes the return action was triggert from executing
         // the application
         zhc_input_reset(input);
+
+        state->render_ctx.grid = renderer_buid_hash_grid(&state->permanent_arena, 20, 11);
 
         state->force_render = true;
         state->is_initialized = true;
@@ -523,7 +529,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         // on the next frame
         ui_ctx->top_most_hot = ui_ctx->hot;
 
-        render(ui_ctx->cmd_buffer, ui_ctx->assets, buffer);
+        render(&state->render_ctx, ui_ctx->cmd_buffer, ui_ctx->assets, buffer);
     }
 
     dgl_mem_arena_free_all(&state->transient_arena);

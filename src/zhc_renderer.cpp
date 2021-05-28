@@ -134,6 +134,52 @@ renderer_get_glyph_rect(Loaded_Font *font, uint32 codepoint)
     return(result);
 }
 
+internal Hash_Grid *
+renderer_buid_hash_grid(DGL_Mem_Arena *arena, int32 cell_count_x, int32 cell_count_y)
+{
+    Hash_Grid *result = 0;
+
+    result = dgl_mem_arena_push_struct(arena, Hash_Grid);
+    result->cell_count_x = cell_count_x;
+    result->cell_count_y = cell_count_y;
+    result->cells = dgl_mem_arena_push_array(arena, uint32, cast(usize)(cell_count_x * cell_count_y));
+    result->prev_cells = dgl_mem_arena_push_array(arena, uint32, cast(usize)(cell_count_x * cell_count_y));
+
+    return(result);
+}
+
+internal void
+update_hash_grid(Hash_Grid *grid, Zhc_Offscreen_Buffer *buffer, V4 rect, Render_Command *cmd)
+{
+    uint32 cmd_hash = HASH_OFFSET_BASIS;
+    uint8 *command_base = cast(uint8*)cmd + sizeof(*cmd);
+
+    // NOTE(dgl): just as a safety measure.
+    assert(command_base == cast(uint8 *)render_command_by_type_internal(cmd), "Invalid command base");
+    hash(&cmd_hash, command_base, cmd->size);
+
+    grid->cell_width = cast(int32)((cast(real32)buffer->width / cast(real32)grid->cell_count_x) + 1.0f);
+    grid->cell_height = cast(int32)((cast(real32)buffer->height / cast(real32)grid->cell_count_y) + 1.0f);
+
+    int32 x1 = rect.x / grid->cell_width;
+    int32 y1 = rect.y / grid->cell_height;
+    int32 x2 = (rect.x + rect.w) / grid->cell_width;
+    int32 y2 = (rect.y + rect.h) / grid->cell_height;
+
+    // NOTE(dgl): must be inclusive because the cell number is truncated.
+    for(int y = y1; y <= y2; y++)
+    {
+        for(int x = x1; x <= x2; x++)
+        {
+            int32 index = x + (y * grid->cell_count_x);
+//             LOG_DEBUG("Cell %d Hash before hashing %u", index, grid->cells[index]);
+            uint32 *cell = &grid->cells[index];
+            hash(cell, &cmd_hash, sizeof(cmd_hash));
+//             LOG_DEBUG("Cell %d Hash: %u, Prev Hash: %u", index, grid->cells[index], grid->prev_cells[index]);
+        }
+    }
+}
+
 inline uint32
 blend_pixel(uint32 src, uint32 dest, V4 color_)
 {
@@ -164,18 +210,37 @@ blend_pixel(uint32 src, uint32 dest, V4 color_)
     return(result);
 }
 
-internal void
-draw_rectangle(Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
+inline V4
+intersect_rect(V4 a, V4 b)
 {
+    V4 result = {};
+
+    int32 x0 = dgl_max(a.x, b.x);
+    int32 y0 = dgl_max(a.y, b.y);
+    int32 x1 = dgl_min((a.x + a.w), (b.x + b.w));
+    int32 y1 = dgl_min((a.y + a.h), (b.y + b.h));
+
+    if (x1 < x0) x1 = x0;
+    if (y1 < y0) y1 = y0;
+
+    result = v4(x0, y0, x1 - x0, y1 - y0);
+    return(result);
+}
+
+internal void
+draw_rectangle(Render_Context *ctx, Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
+{
+    V4 clipped = intersect_rect(ctx->clipping_rect, rect);
+
     // TODO(dgl): check clamping.
-    int32 min_x = dgl_max(0, rect.x);
-    int32 min_y = dgl_max(0, rect.y);
-    int32 max_x = dgl_min(rect.x + rect.w, buffer->width);
-    int32 max_y = dgl_min(rect.y + rect.h, buffer->height);
+    int32 min_x = dgl_max(0, clipped.x);
+    int32 min_y = dgl_max(0, clipped.y);
+    int32 max_x = dgl_min(clipped.x + clipped.w, buffer->width);
+    int32 max_y = dgl_min(clipped.y + clipped.h, buffer->height);
 
 #if 0
-    LOG_DEBUG("Buffer W: %d H: %d", buffer->width, buffer->height);
-    LOG_DEBUG("Drawing rectangle: min X: %d, min Y: %d, max X: %d, max Y: %d", min_x, min_y, max_x, max_y);
+    //LOG_DEBUG("Buffer W: %d H: %d", buffer->width, buffer->height);
+    LOG_DEBUG("Drawing Rect - min_x %d, min_y %d, max_x %d, max_y %d", min_x, min_y, max_x, max_y);
 #endif
 
     // TODO(dgl): do we have to check if min_x < max_y etc.?
@@ -206,7 +271,7 @@ draw_rectangle(Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
 }
 
 internal void
-draw_bitmap(Zhc_Offscreen_Buffer *buffer, Loaded_Image *bitmap, V4 rect, V2 pos, V4 color)
+draw_bitmap(Render_Context *ctx, Zhc_Offscreen_Buffer *buffer, Loaded_Image *bitmap, V4 rect, V2 pos, V4 color)
 {
     assert(bitmap, "Image is not initialized");
 
@@ -215,22 +280,31 @@ draw_bitmap(Zhc_Offscreen_Buffer *buffer, Loaded_Image *bitmap, V4 rect, V2 pos,
     assert(rect.w <= bitmap->width, "Rect w cannot be greater than the image width");
     assert(rect.h <= bitmap->height, "Rect h cannot be greater than the image height");
 
+    V2 source_pos = v2(rect.x, rect.y);
+    V4 target_rect = v4(pos.x, pos.y, rect.w, rect.h);
+
+    V4 clipped = intersect_rect(ctx->clipping_rect, target_rect);
+
     // NOTE(dgl): We increase the min_x and min_y positions by the underflow to
     // have them always larger than 0
-    int32 underflow_x = dgl_min(pos.x, 0);
-    int32 underflow_y = dgl_min(pos.y, 0);
-    int32 min_x = pos.x - underflow_x;
-    int32 min_y = pos.y - underflow_y;
-    int32 max_x = dgl_min(pos.x + rect.w, buffer->width);
-    int32 max_y = dgl_min(pos.y + rect.h, buffer->height);
+    int32 clip_diff_x = clipped.x - pos.x;
+    int32 clip_diff_y = clipped.y - pos.y;
 
+    int32 min_x = clipped.x;
+    int32 min_y = clipped.y;
+    int32 max_x = dgl_min(clipped.x + clipped.w, buffer->width);
+    int32 max_y = dgl_min(clipped.y + clipped.h, buffer->height);
+
+#if 0
+    LOG_DEBUG("Drawing Bitmap - min_x %d, min_y %d, max_x %d, max_y %d", min_x, min_y, max_x, max_y);
+#endif
 
     // NOTE(dgl): we apply the underflow here to start copying the pixels from the correct
     // position. Otherwise we would always start from the top. But if we scroll e.g. upwrads
     // the top must be hidden and only the bottom should be drawn.
     uint32 *source_row = bitmap->pixels +
-                         (rect.x - underflow_x) +
-                         (rect.y - underflow_y)*bitmap->width;
+                         (source_pos.x + clip_diff_x) +
+                         (source_pos.y + clip_diff_y)*bitmap->width;
 
     uint8 *dest_row = ((uint8 *)buffer->memory +
                       min_x*buffer->bytes_per_pixel +
@@ -268,10 +342,22 @@ v2_add(V2 a, V2 b)
 }
 
 internal void
-render(Render_Command_Buffer *commands, Zhc_Assets *assets, Zhc_Offscreen_Buffer *screen_buffer)
+render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets, Zhc_Offscreen_Buffer *screen_buffer)
 {
-    Render_Command *cmd = cast(Render_Command *)commands->base;
 
+    Hash_Grid *grid = ctx->grid;
+    // NOTE(dgl): resetting grid for this render
+    uint32 *tmp = grid->cells;
+    grid->cells = grid->prev_cells;
+    grid->prev_cells = tmp;
+
+    for (int index = 0; index < grid->cell_count_x * grid->cell_count_y; ++index)
+    {
+      grid->cells[index] = HASH_OFFSET_BASIS;
+    }
+
+    // NOTE(dgl): create hashes in grid to setup the rect to render.
+    Render_Command *cmd = cast(Render_Command *)commands->base;
     while(cmd)
     {
         switch(cmd->type)
@@ -279,13 +365,13 @@ render(Render_Command_Buffer *commands, Zhc_Assets *assets, Zhc_Offscreen_Buffer
             case Render_Command_Type_Rect_Filled:
             {
                  Render_Command_Rect *rect_cmd = render_command_by_type(cmd, Render_Command_Rect);
-                 draw_rectangle(screen_buffer, rect_cmd->rect, rect_cmd->color);
+                 update_hash_grid(grid, screen_buffer, rect_cmd->rect, cmd);
             } break;
             case Render_Command_Type_Image:
             {
                 Render_Command_Image *img_cmd = render_command_by_type(cmd, Render_Command_Image);
-                Loaded_Image *image = assets_get_image(assets, img_cmd->image);
-                draw_bitmap(screen_buffer, image, img_cmd->rect, img_cmd->pos, img_cmd->color);
+                V4 render_rect = v4(img_cmd->pos.x, img_cmd->pos.y, img_cmd->rect.w, img_cmd->rect.h);
+                update_hash_grid(grid, screen_buffer, render_rect, cmd);
             } break;
             case Render_Command_Type_Font:
             {
@@ -298,10 +384,9 @@ render(Render_Command_Buffer *commands, Zhc_Assets *assets, Zhc_Offscreen_Buffer
                 }
 
                 Render_Glyph glyph = renderer_get_glyph_rect(font, font_cmd->codepoint);
-
                 V2 real_pos = v2_add(glyph.offset, font_cmd->pos);
-                Loaded_Image *bitmap = assets_get_image(assets, font_cmd->bitmap);
-                draw_bitmap(screen_buffer, bitmap, glyph.coordinates, real_pos, font_cmd->color);
+                V4 render_rect = v4(real_pos.x, real_pos.y, glyph.coordinates.w, glyph.coordinates.h);
+                update_hash_grid(grid, screen_buffer, render_rect, cmd);
             }
             default:
             {
@@ -310,6 +395,71 @@ render(Render_Command_Buffer *commands, Zhc_Assets *assets, Zhc_Offscreen_Buffer
         }
 
         cmd = get_next_command(commands, cmd);
+    }
+    ctx->clipping_rect = v4(0,0,screen_buffer->width, screen_buffer->height);
+    for(int32 y = 0; y < grid->cell_count_y; ++y)
+    {
+        for(int32 x = 0; x < grid->cell_count_x; ++x)
+        {
+            int32 index = x + (y * grid->cell_count_x);
+            LOG_DEBUG("Cell Index: %d - Prev hash %u <=> hash %u", index, grid->prev_cells[index], grid->cells[index]);
+            if(grid->cells[index] != grid->prev_cells[index])
+            {
+                LOG_DEBUG("NOT EQUAL, WILL RENDER");
+                ctx->clipping_rect = v4(x * grid->cell_width, y * grid->cell_height, grid->cell_width, grid->cell_height);
+
+                cmd = cast(Render_Command *)commands->base;
+                while(cmd)
+                {
+                    switch(cmd->type)
+                    {
+                        case Render_Command_Type_Rect_Filled:
+                        {
+                             Render_Command_Rect *rect_cmd = render_command_by_type(cmd, Render_Command_Rect);
+                             draw_rectangle(ctx, screen_buffer, rect_cmd->rect, rect_cmd->color);
+                        } break;
+                        case Render_Command_Type_Image:
+                        {
+                            Render_Command_Image *img_cmd = render_command_by_type(cmd, Render_Command_Image);
+                            Loaded_Image *image = assets_get_image(assets, img_cmd->image);
+                            draw_bitmap(ctx, screen_buffer, image, img_cmd->rect, img_cmd->pos, img_cmd->color);
+                        } break;
+                        case Render_Command_Type_Font:
+                        {
+                            Render_Command_Font *font_cmd = render_command_by_type(cmd, Render_Command_Font);
+
+                            Loaded_Font *font = assets_get_font(assets, font_cmd->font);
+                            if(font->size != font_cmd->size)
+                            {
+                                renderer_build_glyphs(assets, font, font_cmd->bitmap, font_cmd->size);
+                            }
+
+                            Render_Glyph glyph = renderer_get_glyph_rect(font, font_cmd->codepoint);
+
+                            V2 real_pos = v2_add(glyph.offset, font_cmd->pos);
+                            Loaded_Image *bitmap = assets_get_image(assets, font_cmd->bitmap);
+                            draw_bitmap(ctx, screen_buffer, bitmap, glyph.coordinates, real_pos, font_cmd->color);
+                        }
+                        default:
+                        {
+                            //LOG_DEBUG("Nothing rendered");
+                        }
+                    }
+
+                    cmd = get_next_command(commands, cmd);
+                }
+
+#if ZHC_DEBUG
+                draw_rectangle(ctx, screen_buffer, ctx->clipping_rect, v4(1.0f,0.0f,0.0f,0.1f));
+            }
+            draw_rectangle(ctx, screen_buffer, v4(ctx->clipping_rect.x, ctx->clipping_rect.y, ctx->clipping_rect.w, 1), v4(1.0f,0.0f,0.0f,1.0f));
+            draw_rectangle(ctx, screen_buffer, v4(ctx->clipping_rect.x, ctx->clipping_rect.y, 1, ctx->clipping_rect.h), v4(1.0f,0.0f,0.0f,1.0f));
+            draw_rectangle(ctx, screen_buffer, v4(ctx->clipping_rect.x, ctx->clipping_rect.y + ctx->clipping_rect.h, ctx->clipping_rect.w, 1), v4(1.0f,0.0f,0.0f,1.0f));
+            draw_rectangle(ctx, screen_buffer, v4(ctx->clipping_rect.x + ctx->clipping_rect.w, ctx->clipping_rect.y, 1, ctx->clipping_rect.h), v4(1.0f,0.0f,0.0f,1.0f));
+#else
+            }
+#endif
+        }
     }
 }
 

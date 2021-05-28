@@ -229,23 +229,6 @@ input_pressed(Zhc_Input *input, char character)
     return(result);
 }
 
-internal V4
-intersect_rect(V4 a, V4 b)
-{
-    V4 result = {};
-
-    int32 x0 = dgl_max(a.x, b.x);
-    int32 y0 = dgl_max(a.y, b.y);
-    int32 x1 = dgl_min((a.x + a.w), (b.x + b.w));
-    int32 y1 = dgl_min((a.y + a.h), (b.y + b.h));
-
-    if (x1 < x0) x1 = x0;
-    if (y1 < y0) y1 = y0;
-
-    result = v4(x0, y0, x1 - x0, y1 - y0);
-    return(result);
-}
-
 internal bool32
 is_focused(Imui_Context *ctx, V4 rect)
 {
@@ -735,7 +718,7 @@ ui_draw_backplate(Imui_Context *ctx)
     Theme default_theme = get_default_theme(ctx->screen);
     V4 bg_color = default_theme.bg_color;
     if(ctx->is_dark) { bg_color = default_theme.primary_color; }
-    push_rect_render_command(ctx->cmd_buffer, screen, bg_color);
+    //push_rect_render_command(ctx->cmd_buffer, screen, bg_color);
 }
 
 void
