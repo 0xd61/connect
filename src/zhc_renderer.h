@@ -30,6 +30,8 @@ struct Render_Command_Rect
     V4 color;
 };
 
+// NOTE(dgl): Maybe it would be easier to use the rect as render rect and pos just
+// as the starting pos of the source image?
 struct Render_Command_Image
 {
     V2 pos;
@@ -52,6 +54,26 @@ struct Render_Glyph
 {
     V4 coordinates;
     V2 offset;
+};
+
+struct Hash_Grid
+{
+    int32 cell_count_x;
+    int32 cell_count_y;
+    uint32 *cells;
+    uint32 *prev_cells;
+
+    int32 cell_width; /* calculated */
+    int32 cell_height; /* calculated */
+};
+
+struct Render_Context
+{
+    // TODO(dgl): need to refactor the asset loading.
+    // Until then, we pass them during rendering.
+    //Zhc_Assets *assets;
+    Hash_Grid *grid;
+    V4 clipping_rect;
 };
 
 #endif // ZHC_RENDERER_H

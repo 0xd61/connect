@@ -50,6 +50,9 @@ struct Lib_State
     Net_Context *net_ctx;
 
     Zhc_Input old_input;
+
+
+    Render_Context render_ctx;
     bool32 force_render;
 
     bool32 is_initialized;

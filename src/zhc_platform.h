@@ -45,6 +45,16 @@ inline V2 v2(int32 x, int32 y)
     return(result);
 }
 
+inline V2
+v2_add(V2 a, V2 b)
+{
+    V2 result = {};
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+
+    return(result);
+}
+
 struct V4
 {
     union

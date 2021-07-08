@@ -259,6 +259,16 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         // the application
         zhc_input_reset(input);
 
+        int32 cache_cells_x = 20;
+        int32 cache_cells_y = 11;
+        if(buffer->height > buffer->width)
+        {
+            int32 tmp = cache_cells_x;
+            cache_cells_x = cache_cells_y;
+            cache_cells_y = tmp;
+        }
+        state->render_ctx.grid = renderer_buid_hash_grid(&state->permanent_arena, cache_cells_x, cache_cells_y);
+
         state->force_render = true;
         state->is_initialized = true;
     }
@@ -374,7 +384,7 @@ zhc_update_and_render_server(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         // on the next frame
         ui_ctx->top_most_hot = ui_ctx->hot;
 
-        render(ui_ctx->cmd_buffer, ui_ctx->assets, buffer);
+        render(&state->render_ctx, ui_ctx->cmd_buffer, ui_ctx->assets, buffer);
     }
 
     return(do_render);
@@ -410,6 +420,16 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         // sometimes the return action was triggert from executing
         // the application
         zhc_input_reset(input);
+
+        int32 cache_cells_x = 20;
+        int32 cache_cells_y = 11;
+        if(buffer->height > buffer->width)
+        {
+            int32 tmp = cache_cells_x;
+            cache_cells_x = cache_cells_y;
+            cache_cells_y = tmp;
+        }
+        state->render_ctx.grid = renderer_buid_hash_grid(&state->permanent_arena, cache_cells_x, cache_cells_y);
 
         state->force_render = true;
         state->is_initialized = true;
@@ -523,7 +543,7 @@ zhc_update_and_render_client(Zhc_Memory *memory, Zhc_Input *input, Zhc_Offscreen
         // on the next frame
         ui_ctx->top_most_hot = ui_ctx->hot;
 
-        render(ui_ctx->cmd_buffer, ui_ctx->assets, buffer);
+        render(&state->render_ctx, ui_ctx->cmd_buffer, ui_ctx->assets, buffer);
     }
 
     dgl_mem_arena_free_all(&state->transient_arena);
