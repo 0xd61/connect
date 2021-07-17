@@ -65,6 +65,10 @@ struct Hash_Grid
 
     int32 cell_width; /* calculated */
     int32 cell_height; /* calculated */
+
+    // NOTE(dgl): Rectangles to be rendered
+    int32 render_rect_count; // TODO(dgl): is this needed? It will never be exceeded... @cleanup
+    V4 *render_rects;
 };
 
 struct Render_Context

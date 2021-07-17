@@ -142,8 +142,13 @@ renderer_buid_hash_grid(DGL_Mem_Arena *arena, int32 cell_count_x, int32 cell_cou
     result = dgl_mem_arena_push_struct(arena, Hash_Grid);
     result->cell_count_x = cell_count_x;
     result->cell_count_y = cell_count_y;
-    result->cells = dgl_mem_arena_push_array(arena, uint32, cast(usize)(cell_count_x * cell_count_y));
-    result->prev_cells = dgl_mem_arena_push_array(arena, uint32, cast(usize)(cell_count_x * cell_count_y));
+    usize cells = cast(usize)(cell_count_x * cell_count_y);
+    result->cells = dgl_mem_arena_push_array(arena, uint32, cells);
+    result->prev_cells = dgl_mem_arena_push_array(arena, uint32, cells);
+    // NOTE(dgl): Worst case should be every other cells gets rendered. Then we need half the cells.
+    // Adjacent cells get merged
+    result->render_rect_count = dgl_safe_size_to_int32((cells));// / 2) + 1);
+    result->render_rects = dgl_mem_arena_push_array(arena, V4, cast(usize)result->render_rect_count);
 
     return(result);
 }
@@ -269,22 +274,28 @@ draw_rectangle(Render_Context *ctx, Zhc_Offscreen_Buffer *buffer, V4 rect, V4 co
 {
     V4 clipped = intersect_rect(ctx->clipping_rect, rect);
 
-    // TODO(dgl): check clamping.
-    int32 min_x = dgl_max(0, clipped.x);
-    int32 min_y = dgl_max(0, clipped.y);
-    int32 max_x = dgl_min(clipped.x + clipped.w, buffer->width);
-    int32 max_y = dgl_min(clipped.y + clipped.h, buffer->height);
+    // NOTE(dgl): don't need clamping, because the clipping_rect is our cache grid
+    // rect, which is always valid.
+//     int32 min_x = dgl_max(0, clipped.x);
+//     int32 min_y = dgl_max(0, clipped.y);
+//     int32 max_x = dgl_min(clipped.x + clipped.w, buffer->width);
+//     int32 max_y = dgl_min(clipped.y + clipped.h, buffer->height);
+    int32 min_x = clipped.x;
+    int32 min_y = clipped.y;
+    int32 max_x = clipped.x + clipped.w;
+    int32 max_y = clipped.y + clipped.h;
 
+    assert(min_x >= 0 && min_y >= 0 && max_x <= buffer->width && max_y <= buffer->height, "Render buffer overflow. Rect does not fit on screen");
 #if 0
     //LOG_DEBUG("Buffer W: %d H: %d", buffer->width, buffer->height);
     LOG_DEBUG("Drawing Rect - min_x %d, min_y %d, max_x %d, max_y %d", min_x, min_y, max_x, max_y);
 #endif
 
     // TODO(dgl): do we have to check if min_x < max_y etc.?
-    min_x = dgl_clamp(min_x, 0, max_x);
-    min_y = dgl_clamp(min_y, 0, max_y);
-    max_x = dgl_clamp(max_x, min_x, buffer->width);
-    max_y = dgl_clamp(max_y, min_y, buffer->height);
+    //min_x = dgl_clamp(min_x, 0, max_x);
+    //min_y = dgl_clamp(min_y, 0, max_y);
+    //max_x = dgl_clamp(max_x, min_x, buffer->width);
+    //max_y = dgl_clamp(max_y, min_y, buffer->height);
 
     uint8 *row = (cast(uint8 *)buffer->memory +
                   min_y*buffer->pitch +
@@ -376,7 +387,7 @@ render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets,
     grid->cells = grid->prev_cells;
     grid->prev_cells = tmp;
 
-
+    // NOTE(dgl): resetting hash grid
     for (int index = 0; index < grid->cell_count_x * grid->cell_count_y; ++index)
     {
       grid->cells[index] = HASH_OFFSET_BASIS;
@@ -423,11 +434,13 @@ render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets,
         cmd = get_next_command(commands, cmd);
     }
 
-#if ZHC_DEBUG
-    // NOTE(dgl): used to visualize rerenders
-    local_persist int32 transparency_index;
-    transparency_index += 10;
+#if 1
+    local_persist int color_index;
+    color_index = ++color_index % 5;
 #endif
+
+    // NOTE(dgl): check if cells need update and can be merged into render rects
+    int32 render_rect_count = 0;
     ctx->clipping_rect = v4(0,0,screen_buffer->width, screen_buffer->height);
     for(int32 y = 0; y < grid->cell_count_y; ++y)
     {
@@ -435,67 +448,90 @@ render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets,
         {
             int32 index = x + (y * grid->cell_count_x);
             //LOG_DEBUG("Cell Index: %d - Prev hash %u <=> hash %u", index, grid->prev_cells[index], grid->cells[index]);
-            if(grid->cells[index] != grid->prev_cells[index])
+            // NOTE(dgl): if a cell is rendered the prev_cell gehts the cell hash to avoid cells being rendered twice.
+            if(grid->cells[index] !=  grid->prev_cells[index])
             {
                 //LOG_DEBUG("NOT EQUAL, WILL RENDER");
-                ctx->clipping_rect = v4(x * grid->cell_width, y * grid->cell_height, grid->cell_width, grid->cell_height);
-
-                cmd = cast(Render_Command *)commands->base;
-                while(cmd)
+                V4 cell = v4(x, y, 1, 1);
+                V4 render_rect = grid->render_rects[render_rect_count - 1];
+                if(cell.x + cell.w >= render_rect.x && cell.x <= render_rect.x + render_rect.w &&
+                   cell.y + cell.h >= render_rect.y && cell.y <= render_rect.y + render_rect.h)
                 {
-                    switch(cmd->type)
-                    {
-                        case Render_Command_Type_Rect_Filled:
-                        {
-                             Render_Command_Rect *rect_cmd = render_command_by_type(cmd, Render_Command_Rect);
+                      int32 x1 = dgl_min(cell.x, render_rect.x);
+                      int32 y1 = dgl_min(cell.y, render_rect.y);
+                      int32 x2 = dgl_max(cell.x + cell.w, render_rect.x + render_rect.w);
+                      int32 y2 = dgl_max(cell.y + cell.h, render_rect.y + render_rect.h);
+                      V4 merged = v4(x1, y1, x2 - x1, y2 - y1);
+                      grid->render_rects[render_rect_count - 1] = merged;
+                }
+                else // NOTE(dgl): not mergeable
+                {
+                    assert(render_rect_count < grid->render_rect_count, "Render rect overflow");
+                    grid->render_rects[render_rect_count++] = cell;
+                }
+            }
+        }
+    }
+
+
+    LOG_DEBUG("Rendering %d rectangles", render_rect_count);
+    // NOTE(dgl): render to screen buffer
+    for(int32 index = 0; index < render_rect_count; ++index)
+    {
+        V4 rect = grid->render_rects[index];
+        ctx->clipping_rect = v4(rect.x * grid->cell_width, rect.y * grid->cell_height, rect.w * grid->cell_width, rect.h * grid->cell_height);
+        Render_Command *cmd = cast(Render_Command *)commands->base;
+        while(cmd)
+        {
+            switch(cmd->type)
+            {
+                case Render_Command_Type_Rect_Filled:
+                {
+                     Render_Command_Rect *rect_cmd = render_command_by_type(cmd, Render_Command_Rect);
 //                              LOG_DEBUG("Rect - rect x: %d, y: %d, w: %d, h: %d, color: r: %f, g: %f, b: %f, a: %f", rect_cmd->rect.x, rect_cmd->rect.y, rect_cmd->rect.w, rect_cmd->rect.h, rect_cmd->color.r, rect_cmd->color.g, rect_cmd->color.b, rect_cmd->color.a);
-                             draw_rectangle(ctx, screen_buffer, rect_cmd->rect, rect_cmd->color);
-                        } break;
-                        case Render_Command_Type_Image:
-                        {
-                            Render_Command_Image *img_cmd = render_command_by_type(cmd, Render_Command_Image);
-                            Loaded_Image *image = assets_get_image(assets, img_cmd->image);
+                     draw_rectangle(ctx, screen_buffer, rect_cmd->rect, rect_cmd->color);
+                } break;
+                case Render_Command_Type_Image:
+                {
+                    Render_Command_Image *img_cmd = render_command_by_type(cmd, Render_Command_Image);
+                    Loaded_Image *image = assets_get_image(assets, img_cmd->image);
 //                             LOG_DEBUG("Image - pos: x: %d, y: %d, rect x: %d, y: %d, w: %d, h: %d, color: r: %f, g: %f, b: %f, a: %f", img_cmd->pos.x, img_cmd->pos.y, img_cmd->rect.x, img_cmd->rect.y, img_cmd->rect.w, img_cmd->rect.h, img_cmd->color.r, img_cmd->color.g, img_cmd->color.b, img_cmd->color.a);
-                            draw_bitmap(ctx, screen_buffer, image, img_cmd->rect, img_cmd->pos, img_cmd->color);
-                        } break;
-                        case Render_Command_Type_Font:
-                        {
-                            Render_Command_Font *font_cmd = render_command_by_type(cmd, Render_Command_Font);
+                    draw_bitmap(ctx, screen_buffer, image, img_cmd->rect, img_cmd->pos, img_cmd->color);
+                } break;
+                case Render_Command_Type_Font:
+                {
+                    Render_Command_Font *font_cmd = render_command_by_type(cmd, Render_Command_Font);
 
-                            Loaded_Font *font = assets_get_font(assets, font_cmd->font);
-                            if(font->size != font_cmd->size)
-                            {
-                                renderer_build_glyphs(assets, font, font_cmd->bitmap, font_cmd->size);
-                            }
-
-                            Render_Glyph glyph = renderer_get_glyph_rect(font, font_cmd->codepoint);
-
-                            V2 real_pos = v2_add(glyph.offset, font_cmd->pos);
-                            Loaded_Image *bitmap = assets_get_image(assets, font_cmd->bitmap);
-//                             LOG_DEBUG("Font - pos: x: %d, y: %d, color: r: %f, g: %f, b: %f, a: %f, codepoint: %u, font %d, bitmap %d, size: %d", font_cmd->pos.x, font_cmd->pos.y, font_cmd->color.r, font_cmd->color.g, font_cmd->color.b, font_cmd->color.a, font_cmd->codepoint, font_cmd->font, font_cmd->bitmap, font_cmd->size);
-                            draw_bitmap(ctx, screen_buffer, bitmap, glyph.coordinates, real_pos, font_cmd->color);
-                        } break;
-                        default:
-                        {
-                            //LOG_DEBUG("Nothing rendered");
-                        }
+                    Loaded_Font *font = assets_get_font(assets, font_cmd->font);
+                    if(font->size != font_cmd->size)
+                    {
+                        renderer_build_glyphs(assets, font, font_cmd->bitmap, font_cmd->size);
                     }
 
-                    cmd = get_next_command(commands, cmd);
-                }
+                    Render_Glyph glyph = renderer_get_glyph_rect(font, font_cmd->codepoint);
 
-#if 0
-                real32 transp = cast(real32)(transparency_index % 255) / 255.0f;
-                draw_rectangle(ctx, screen_buffer, ctx->clipping_rect, v4(1.0f,0.0f,0.0f, transp));
+                    V2 real_pos = v2_add(glyph.offset, font_cmd->pos);
+                    Loaded_Image *bitmap = assets_get_image(assets, font_cmd->bitmap);
+//                             LOG_DEBUG("Font - pos: x: %d, y: %d, color: r: %f, g: %f, b: %f, a: %f, codepoint: %u, font %d, bitmap %d, size: %d", font_cmd->pos.x, font_cmd->pos.y, font_cmd->color.r, font_cmd->color.g, font_cmd->color.b, font_cmd->color.a, font_cmd->codepoint, font_cmd->font, font_cmd->bitmap, font_cmd->size);
+                    draw_bitmap(ctx, screen_buffer, bitmap, glyph.coordinates, real_pos, font_cmd->color);
+                } break;
+                default:
+                {
+                    //LOG_DEBUG("Nothing rendered");
+                }
             }
-            draw_rectangle(ctx, screen_buffer, v4(ctx->clipping_rect.x, ctx->clipping_rect.y, ctx->clipping_rect.w, 1), v4(1.0f,0.0f,0.0f,1.0f));
-            draw_rectangle(ctx, screen_buffer, v4(ctx->clipping_rect.x, ctx->clipping_rect.y, 1, ctx->clipping_rect.h), v4(1.0f,0.0f,0.0f,1.0f));
-            draw_rectangle(ctx, screen_buffer, v4(ctx->clipping_rect.x, ctx->clipping_rect.y + ctx->clipping_rect.h, ctx->clipping_rect.w, 1), v4(1.0f,0.0f,0.0f,1.0f));
-            draw_rectangle(ctx, screen_buffer, v4(ctx->clipping_rect.x + ctx->clipping_rect.w, ctx->clipping_rect.y, 1, ctx->clipping_rect.h), v4(1.0f,0.0f,0.0f,1.0f));
-#else
-            }
-#endif
+
+            cmd = get_next_command(commands, cmd);
         }
+
+#if 1
+        V4 colors[] = {V4{.r=1.0f, .g=0.0f, .b=0.0f, .a=0.2f},
+                       V4{.r=0.0f, .g=1.0f, .b=0.0f, .a=0.2f},
+                       V4{.r=0.0f, .g=0.0f, .b=1.0f, .a=0.2f},
+                       V4{.r=1.0f, .g=1.0f, .b=0.0f, .a=0.2f},
+                       V4{.r=0.0f, .g=1.0f, .b=1.0f, .a=0.2f}};
+        draw_rectangle(ctx, screen_buffer, ctx->clipping_rect, colors[color_index]);
+#endif
     }
 }
 
