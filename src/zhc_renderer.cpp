@@ -147,7 +147,7 @@ renderer_buid_hash_grid(DGL_Mem_Arena *arena, int32 cell_count_x, int32 cell_cou
     result->prev_cells = dgl_mem_arena_push_array(arena, uint32, cells);
     // NOTE(dgl): Worst case should be every other cells gets rendered. Then we need half the cells.
     // Adjacent cells get merged
-    result->render_rect_count = dgl_safe_size_to_int32((cells));// / 2) + 1);
+    result->render_rect_count = dgl_safe_size_to_int32((cells / 2) + 1);
     result->render_rects = dgl_mem_arena_push_array(arena, V4, cast(usize)result->render_rect_count);
 
     return(result);
@@ -473,8 +473,6 @@ render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets,
         }
     }
 
-
-    LOG_DEBUG("Rendering %d rectangles", render_rect_count);
     // NOTE(dgl): render to screen buffer
     for(int32 index = 0; index < render_rect_count; ++index)
     {
@@ -524,7 +522,7 @@ render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets,
             cmd = get_next_command(commands, cmd);
         }
 
-#if 1
+#if 0
         V4 colors[] = {V4{.r=1.0f, .g=0.0f, .b=0.0f, .a=0.2f},
                        V4{.r=0.0f, .g=1.0f, .b=0.0f, .a=0.2f},
                        V4{.r=0.0f, .g=0.0f, .b=1.0f, .a=0.2f},
