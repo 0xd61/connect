@@ -1,14 +1,8 @@
 #ifndef ZHC_RENDERER_H
 #define ZHC_RENDERER_H
 
-
-// TODO(dgl): we currently have three issues with cached rendering.
-// 1. On some resolutions nothing is drawn
-// 2. On some resolutions the screen is not updated (I guess this is solved)
-// 3. On small resolutions we hit an assert in draw_rectangle/4 (Render buffer overflow)
 #define CACHED_RENDERING       true
 #define CACHED_RENDERING_DEBUG false
-
 
 struct Render_Command_Buffer
 {
