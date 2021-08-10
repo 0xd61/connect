@@ -1,6 +1,15 @@
 #ifndef ZHC_RENDERER_H
 #define ZHC_RENDERER_H
 
+
+// TODO(dgl): we currently have three issues with cached rendering.
+// 1. On some resolutions nothing is drawn
+// 2. On some resolutions the screen is not updated (I guess this is solved)
+// 3. On small resolutions we hit an assert in draw_rectangle/4 (Render buffer overflow)
+#define CACHED_RENDERING       true
+#define CACHED_RENDERING_DEBUG true
+
+
 struct Render_Command_Buffer
 {
     usize size;
@@ -62,9 +71,6 @@ struct Hash_Grid
     int32 cell_count_y;
     uint32 *cells;
     uint32 *prev_cells;
-
-    int32 cell_width; /* calculated */
-    int32 cell_height; /* calculated */
 
     // NOTE(dgl): Rectangles to be rendered
     int32 render_rect_count; // TODO(dgl): is this needed? It will never be exceeded... @cleanup

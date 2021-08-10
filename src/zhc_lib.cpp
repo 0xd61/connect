@@ -21,8 +21,6 @@
 #include "zhc_lib.h"
 #include "zhc_asset.cpp"
 #include "zhc_renderer.cpp"
-// TODO(dgl): should we move the rendering calls out of UI and
-// use a render command buffer?
 #include "zhc_ui.cpp"
 #include "zhc_crypto.cpp"
 #include "zhc_net.cpp"
@@ -97,11 +95,23 @@ multicast_request(Net_Context *ctx, Net_Message_Type type)
     net_multicast_message(ctx, message);
 }
 
+internal bool32
+file_is_valid(File *file)
+{
+    bool32 result = false;
+    // TODO(dgl): proper file is valid check
+    // type, size, has info, has data
+    if(file->data)
+    {
+        result = true;
+    }
+    return(result);
+}
+
 internal void
 send_filehash(Net_Context *ctx, Net_Conn_ID id, File *file)
 {
-    // TODO(dgl): proper file is valid check
-    if(file->data)
+    if(file_is_valid(file))
     {
         Net_Message message = {};
         message.type = Net_Message_Hash_Res;
@@ -115,7 +125,7 @@ send_filehash(Net_Context *ctx, Net_Conn_ID id, File *file)
 internal void
 send_file(Net_Context *ctx, Net_Conn_ID id, File *file)
 {
-    if(file->data)
+    if(file_is_valid(file))
     {
         Net_Message message = {};
         message.type = Net_Message_Data_Res;
@@ -130,7 +140,7 @@ internal void
 multicast_file(Net_Context *ctx, File *file)
 {
     LOG_DEBUG("Multicast file %p", file->data);
-    if(file->data)
+    if(file_is_valid(file))
     {
         Net_Message message = {};
         message.type = Net_Message_Data_Res;

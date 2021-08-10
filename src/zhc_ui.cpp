@@ -732,7 +732,9 @@ ui_draw_fps_counter(Imui_Context *ctx)
     V4 fps_body = v4(10, 10, 1000, 1000);
     char fps_text[16];
     sprintf(fps_text, "%.02f fps", (1000.0f / input->last_frame_in_ms));
-    ui_textarea(ctx, &ctx->system_font, fps_body, default_theme.primary_color, fps_text, array_count(fps_text));
+    V4 font_color = default_theme.primary_color;
+    if(ctx->is_dark) { font_color = default_theme.bg_color; }
+    ui_textarea(ctx, &ctx->system_font, fps_body, font_color, fps_text, array_count(fps_text));
     recalculate_font_metrics(ctx->assets, &ctx->system_font, old_font_size);
 }
 

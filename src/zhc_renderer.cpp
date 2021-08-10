@@ -163,23 +163,21 @@ update_hash_grid(Zhc_Assets *assets, Hash_Grid *grid, Zhc_Offscreen_Buffer *buff
     assert(command_base == cast(uint8 *)render_command_by_type_internal(cmd), "Invalid command base");
     hash(&cmd_hash, command_base, cmd->size);
 
-    grid->cell_width = cast(int32)((cast(real32)buffer->width / cast(real32)grid->cell_count_x));
-    grid->cell_height = cast(int32)((cast(real32)buffer->height / cast(real32)grid->cell_count_y));
+    real32 scale_width = cast(real32)grid->cell_count_x / cast(real32)buffer->width;
+    real32 scale_height = cast(real32)grid->cell_count_y / cast(real32)buffer->height;
 
-    // NOTE(dgl): we could also clamp the rect before. Then this here is unnecessary.
-    // @cleanup
-    int32 x1 = dgl_max(0, rect.x / grid->cell_width);
-    int32 y1 = dgl_max(0, rect.y / grid->cell_height);
-    int32 x2 = dgl_clamp((rect.x + rect.w) / grid->cell_width, 0, grid->cell_count_x - 1);
-    int32 y2 = dgl_clamp((rect.y + rect.h) / grid->cell_height, 0, grid->cell_count_y - 1);
+    int32 rect_x1 = dgl_max(cast(int32)(cast(real32)rect.x * scale_width), 0);
+    int32 rect_y1 = dgl_max(cast(int32)(cast(real32)rect.y * scale_height), 0);
+    int32 rect_x2 = dgl_min(cast(int32)(cast(real32)(rect.x + rect.w) * scale_width), grid->cell_count_x - 1);
+    int32 rect_y2 = dgl_min(cast(int32)(cast(real32)(rect.y + rect.h) * scale_height), grid->cell_count_y - 1);
 
     // NOTE(dgl): must be inclusive because the cell number is truncated.
-    for(int y = y1; y <= y2; y++)
+    for(int y = rect_y1; y <= rect_y2; y++)
     {
-        for(int x = x1; x <= x2; x++)
+        for(int x = rect_x1; x <= rect_x2; x++)
         {
             int32 index = (x + (y * grid->cell_count_x));
-            assert(index < grid->cell_count_x * grid->cell_count_y, "Grid cell overflow. Index is out of bounds");
+            assert(index < grid->cell_count_x * grid->cell_count_y && index >= 0, "Grid cell overflow. Index is out of bounds");
 
             uint32 *cell = &grid->cells[index];
             hash(cell, &cmd_hash, sizeof(cmd_hash));
@@ -273,29 +271,16 @@ internal void
 draw_rectangle(Render_Context *ctx, Zhc_Offscreen_Buffer *buffer, V4 rect, V4 color)
 {
     V4 clipped = intersect_rect(ctx->clipping_rect, rect);
-
-    // NOTE(dgl): don't need clamping, because the clipping_rect is our cache grid
-    // rect, which is always valid.
-//     int32 min_x = dgl_max(0, clipped.x);
-//     int32 min_y = dgl_max(0, clipped.y);
-//     int32 max_x = dgl_min(clipped.x + clipped.w, buffer->width);
-//     int32 max_y = dgl_min(clipped.y + clipped.h, buffer->height);
     int32 min_x = clipped.x;
     int32 min_y = clipped.y;
     int32 max_x = clipped.x + clipped.w;
     int32 max_y = clipped.y + clipped.h;
 
-    assert(min_x >= 0 && min_y >= 0 && max_x <= buffer->width && max_y <= buffer->height, "Render buffer overflow. Rect does not fit on screen");
 #if 0
-    //LOG_DEBUG("Buffer W: %d H: %d", buffer->width, buffer->height);
+    LOG_DEBUG("Buffer W: %d H: %d", buffer->width, buffer->height);
     LOG_DEBUG("Drawing Rect - min_x %d, min_y %d, max_x %d, max_y %d", min_x, min_y, max_x, max_y);
 #endif
-
-    // TODO(dgl): do we have to check if min_x < max_y etc.?
-    //min_x = dgl_clamp(min_x, 0, max_x);
-    //min_y = dgl_clamp(min_y, 0, max_y);
-    //max_x = dgl_clamp(max_x, min_x, buffer->width);
-    //max_y = dgl_clamp(max_y, min_y, buffer->height);
+    assert(min_x >= 0 && min_y >= 0 && max_x <= buffer->width && max_y <= buffer->height, "Render buffer overflow. Rect does not fit on screen");
 
     uint8 *row = (cast(uint8 *)buffer->memory +
                   min_y*buffer->pitch +
@@ -382,6 +367,7 @@ draw_bitmap(Render_Context *ctx, Zhc_Offscreen_Buffer *buffer, Loaded_Image *bit
 internal void
 render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets, Zhc_Offscreen_Buffer *screen_buffer)
 {
+#if CACHED_RENDERING == true
     Hash_Grid *grid = ctx->grid;
     uint32 *tmp = grid->cells;
     grid->cells = grid->prev_cells;
@@ -434,7 +420,7 @@ render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets,
         cmd = get_next_command(commands, cmd);
     }
 
-#if 1
+#if CACHED_RENDERING_DEBUG == true
     local_persist int color_index;
     color_index = ++color_index % 5;
 #endif
@@ -453,8 +439,10 @@ render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets,
             {
                 //LOG_DEBUG("NOT EQUAL, WILL RENDER");
                 V4 cell = v4(x, y, 1, 1);
-                V4 render_rect = grid->render_rects[render_rect_count - 1];
-                if(cell.x + cell.w >= render_rect.x && cell.x <= render_rect.x + render_rect.w &&
+                int32 prev_rect = dgl_max(render_rect_count - 1, 0);
+                V4 render_rect = grid->render_rects[prev_rect];
+                if(render_rect_count > 0 &&
+                   cell.x + cell.w >= render_rect.x && cell.x <= render_rect.x + render_rect.w &&
                    cell.y + cell.h >= render_rect.y && cell.y <= render_rect.y + render_rect.h)
                 {
                       int32 x1 = dgl_min(cell.x, render_rect.x);
@@ -462,7 +450,7 @@ render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets,
                       int32 x2 = dgl_max(cell.x + cell.w, render_rect.x + render_rect.w);
                       int32 y2 = dgl_max(cell.y + cell.h, render_rect.y + render_rect.h);
                       V4 merged = v4(x1, y1, x2 - x1, y2 - y1);
-                      grid->render_rects[render_rect_count - 1] = merged;
+                      grid->render_rects[prev_rect] = merged;
                 }
                 else // NOTE(dgl): not mergeable
                 {
@@ -473,11 +461,26 @@ render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets,
         }
     }
 
+
     // NOTE(dgl): render to screen buffer
     for(int32 index = 0; index < render_rect_count; ++index)
     {
         V4 rect = grid->render_rects[index];
-        ctx->clipping_rect = v4(rect.x * grid->cell_width, rect.y * grid->cell_height, rect.w * grid->cell_width, rect.h * grid->cell_height);
+
+        real32 scale_width = cast(real32)screen_buffer->width / cast(real32)grid->cell_count_x;
+        real32 scale_height = cast(real32)screen_buffer->height / cast(real32)grid->cell_count_y;
+
+        int32 x = cast(int32)(cast(real32)rect.x * scale_width);
+        int32 y = cast(int32)(cast(real32)rect.y * scale_height);
+        int32 w = cast(int32)(cast(real32)rect.w * scale_width);
+        int32 h = cast(int32)(cast(real32)rect.h * scale_height);
+
+        ctx->clipping_rect = v4(x, y, w, h);
+#else // not cached rendering
+    for(int32 index = 0; index < 1; ++index)
+    {
+        ctx->clipping_rect = v4(0, 0, screen_buffer->width, screen_buffer->height);
+#endif // cached rendering
         Render_Command *cmd = cast(Render_Command *)commands->base;
         while(cmd)
         {
@@ -522,7 +525,7 @@ render(Render_Context *ctx, Render_Command_Buffer *commands, Zhc_Assets *assets,
             cmd = get_next_command(commands, cmd);
         }
 
-#if 0
+#if CACHED_RENDERING_DEBUG == true
         V4 colors[] = {V4{.r=1.0f, .g=0.0f, .b=0.0f, .a=0.2f},
                        V4{.r=0.0f, .g=1.0f, .b=0.0f, .a=0.2f},
                        V4{.r=0.0f, .g=0.0f, .b=1.0f, .a=0.2f},
