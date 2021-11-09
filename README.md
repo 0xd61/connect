@@ -1,5 +1,10 @@
 # connect
-Connect App for "zu Hause"
+Connect App für "zu Hause"
+
+Mit der Zu Hause - Connect haben Sie den aktuellen Songtext während einer "Zu Hause" Veranstaltung direkt auf Ihrem Gerät. Sie haben die Möglichkeit die Textgröße und den Hintergrund auf Ihre Bedürfnisse anzupassen.
+
+Made by Daniel Glinka from Samuu Tech S.R.L.
+https://github.com/0xd61/connect/#readme
 
 ## Android Setup
 
