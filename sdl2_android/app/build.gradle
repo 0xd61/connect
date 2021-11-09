@@ -63,7 +63,7 @@ android {
     lintOptions {
         abortOnError false
     }
-    ndkVersion '21.1.6352462'
+    ndkVersion '22.0.7026061'
 
     if (buildAsLibrary) {
         libraryVariants.all { variant ->

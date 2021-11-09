@@ -17,7 +17,9 @@ CommonDefines="-DZHC_BIG_ENDIAN=0 -DZHC_DEBUG=${NO_RELEASE} -DZHC_INTERNAL=${NO_
 
 # the goal should be -nostdlib
 # TODO(dgl): link sdl2_net statically
-CommonLinkerFlags="-Wl,--gc-sections -lm -lSDL2_net -lsodium"
+CommonLinkerFlags="$(sdl2-config --libs) -Wl,--gc-sections -lm  -lSDL2_net -lsodium"
+
+CommonIncludeFlags="$(sdl2-config --cflags) -L linux/sodium"
 
 if [ -z "$1" ]; then
     OS_NAME=$(uname -o 2>/dev/null || uname -s)
@@ -63,18 +65,14 @@ if [ "$OS_NAME" == "GNU/Linux" ] || \
     popd > /dev/null
 
     echo "Building tests"
-    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_sdl2_api_x64 $srcDir/sdl2_api_test.cpp \
-    `sdl2-config --static-libs` -pg \
-    -L linux/sodium $CommonLinkerFlags
-    clang++ $CommonCompilerFlags $CommonDefines -o linux/test_zhc_net_x64 $srcDir/zhc_net_test.cpp \
-    `sdl2-config --static-libs` -pg \
-    -L linux/sodium $CommonLinkerFlags
-    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_zhc_asset_x64 $srcDir/zhc_asset_test.cpp \
-    `sdl2-config --static-libs` -pg \
-    -L linux/sodium $CommonLinkerFlags
-    clang++ $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_zhc_renderer_x64 $srcDir/zhc_renderer_test.cpp \
-    `sdl2-config --static-libs` -pg \
-    -L linux/sodium $CommonLinkerFlags
+    clang++ $CommonIncludeFlags $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_sdl2_api_x64 $srcDir/sdl2_api_test.cpp \
+    -pg $CommonLinkerFlags
+    clang++ $CommonIncludeFlags $CommonCompilerFlags $CommonDefines -o linux/test_zhc_net_x64 $srcDir/zhc_net_test.cpp \
+    -pg $CommonLinkerFlags
+    clang++ $CommonIncludeFlags $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_zhc_asset_x64 $srcDir/zhc_asset_test.cpp \
+    -pg $CommonLinkerFlags
+    clang++ $CommonIncludeFlags $CommonCompilerFlags $CommonDefines $CommonLinkerFlags -o linux/test_zhc_renderer_x64 $srcDir/zhc_renderer_test.cpp \
+    -pg $CommonLinkerFlags
 
     echo "Testing:"
     ./linux/test_sdl2_api_x64
@@ -85,13 +83,11 @@ if [ "$OS_NAME" == "GNU/Linux" ] || \
     # PIC = Position Independent Code
     # -lm -> we have to link the math library...
     echo "Building application"
-    clang++ $CommonCompilerFlags $CommonDefines -o linux/server_main_x64 $srcDir/server_main.cpp \
-    `sdl2-config --static-libs` -pg \
-    -L linux/sodium $CommonLinkerFlags
+    clang++ $CommonIncludeFlags $CommonCompilerFlags $CommonDefines -o linux/server_main_x64 $srcDir/server_main.cpp \
+    -pg $CommonLinkerFlags
 
-    clang++ $CommonCompilerFlags $CommonDefines -o linux/client_main_x64 $srcDir/client_main.cpp \
-    `sdl2-config --static-libs` -pg \
-    -L linux/sodium $CommonLinkerFlags
+    clang++ $CommonIncludeFlags $CommonCompilerFlags $CommonDefines -o linux/client_main_x64 $srcDir/client_main.cpp \
+    -pg $CommonLinkerFlags
 
     cp -r $dataDir/assets/* linux/
 elif [ "$OS_NAME" == "Android" ] || \
